@@ -79,3 +79,22 @@ class DecisionRunRequest(BaseModel):
 class DecisionRunStatusResponse(BaseModel):
     run_id: str
     status: Literal["queued", "running", "completed", "failed"]
+class RecommendationUpdateRequest(BaseModel):
+    status: RecommendationStatus
+    adjusted_qty: Optional[int] = None
+    user_note: Optional[str] = None
+
+
+class RecommendationUpdateResponse(BaseModel):
+    sku_id: str
+    status: RecommendationStatus
+    adjusted_qty: Optional[int]
+    required_cash_rp: float
+    budget_allocated_rp: float
+    budget_remaining_rp: float
+
+
+class ConfirmResponse(BaseModel):
+    confirmed_count: int
+    confirmed_at: str
+    total_cost_rp: float

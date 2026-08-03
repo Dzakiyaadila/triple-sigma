@@ -42,3 +42,58 @@ def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: floa
 
     db.commit()
     return plan
+
+
+def update_recommendation(db: Session, plan: dict, sku_id: str, status: str,
+                           adjusted_qty: int | None) -> dict:
+    rec = next((r for r in plan["recommendations"] if r["sku_id"] == sku_id), None)
+    if not rec:
+        raise ValueError(f"SKU {sku_id} tidak ditemukan di run ini")
+
+    product = db.get(Product, sku_id)
+    unit_cost = product.unit_cost_rp if product else 0
+
+    new_qty = 0 if status == "ditolak" else (adjusted_qty if adjusted_qty is not None else rec["recommended_qty"])
+    new_cost = new_qty * unit_cost
+
+    hypothetical_total = sum(
+        (new_cost if r["sku_id"] == sku_id else r["required_cash_rp"])
+        for r in plan["recommendations"]
+        if (r["sku_id"] == sku_id and status == "disetujui")
+        or (r["sku_id"] != sku_id and r["status"] == "disetujui")
+    )
+
+    run = db.get(DecisionRun, plan["run_id"])
+    if status == "disetujui" and hypothetical_total > run.budget_rp:
+        raise ValueError(
+            f"Total biaya (Rp{hypothetical_total:,.0f}) melebihi budget "
+            f"(Rp{run.budget_rp:,.0f}). Kurangi jumlah atau tolak SKU lain dulu."
+        )
+
+    rec["status"] = status
+    rec["adjusted_qty"] = adjusted_qty
+    rec["required_cash_rp"] = new_cost
+
+    db_rec = db.query(Recommendation).filter_by(run_id=plan["run_id"], sku_id=sku_id).first()
+    if db_rec:
+        db_rec.status = status
+        db_rec.adjusted_qty = adjusted_qty
+        db.commit()
+
+    budget_allocated = sum(r["required_cash_rp"] for r in plan["recommendations"] if r["status"] == "disetujui")
+
+    return {
+        "sku_id": sku_id, "status": status, "adjusted_qty": adjusted_qty,
+        "required_cash_rp": new_cost, "budget_allocated_rp": budget_allocated,
+        "budget_remaining_rp": run.budget_rp - budget_allocated,
+    }
+
+
+def confirm_run(plan: dict) -> dict:
+    approved = [r for r in plan["recommendations"] if r["status"] == "disetujui"]
+    total_cost = sum(r["required_cash_rp"] for r in approved)
+    return {
+        "confirmed_count": len(approved),
+        "confirmed_at": datetime.now(timezone.utc).isoformat(),
+        "total_cost_rp": total_cost,
+    }

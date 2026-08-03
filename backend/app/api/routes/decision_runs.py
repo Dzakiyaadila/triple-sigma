@@ -6,7 +6,7 @@ from app.services.decision_run_service import run_decision
 
 router = APIRouter(prefix="/decision-runs", tags=["decision-runs"])
 
-_plans_cache: dict[str, dict] = {}
+from app.services.plan_cache import plans_cache
 
 
 @router.post("", response_model=RestockPlan)
@@ -20,13 +20,13 @@ def create_decision_run(payload: DecisionRunRequest, db: Session = Depends(get_d
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    _plans_cache[plan["run_id"]] = plan
+    plans_cache[plan["run_id"]] = plan
     return plan
 
 
 @router.get("/{run_id}/plan", response_model=RestockPlan)
 def get_plan(run_id: str):
-    plan = _plans_cache.get(run_id)
+    plan = plans_cache.get(run_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Run tidak ditemukan")
     return plan
