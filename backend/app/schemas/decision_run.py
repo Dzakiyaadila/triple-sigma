@@ -97,12 +97,13 @@ class DecisionRunStatusResponse(BaseModel):
     status: Literal["queued", "running", "completed", "failed"]
 
 
-class DecisionRunStatusResponse(BaseModel):
-    run_id: str
-    status: Literal["queued", "running", "completed", "failed"]
-
-
 class RecommendationUpdateRequest(BaseModel):
+    status: RecommendationStatus
+    adjusted_qty: Optional[int] = None
+    user_note: Optional[str] = None
+
+
+class RecommendationUpdateResponse(BaseModel):
     sku_id: str
     status: RecommendationStatus
     adjusted_qty: Optional[int]
