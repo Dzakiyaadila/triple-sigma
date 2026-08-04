@@ -1,8 +1,9 @@
 from datetime import datetime, timezone, date
 from sqlalchemy.orm import Session
 from sqlalchemy import select
-from app.db.models import Store, Product, DecisionRun, Recommendation
+from app.db.models import Store, Product, Supplier, DecisionRun, Recommendation
 from app.ml.restock_plan import generate_restock_plan
+from app.services.reasoning import generate_reasoning
 
 
 def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: float,
@@ -15,11 +16,26 @@ def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: floa
     product_dicts = [
         {"sku_id": p.sku_id, "unit_cost_rp": p.unit_cost_rp} for p in products
     ]
+    product_by_id = {p.sku_id: p for p in products}
+    suppliers = {s.supplier_id: s for s in db.scalars(select(Supplier)).all()}
 
     plan = generate_restock_plan(
         products=product_dicts, store_id=store_id, decision_date=decision_date,
         budget_rp=budget_rp, policy_preset=policy_preset, horizon_days=horizon_days,
     )
+
+    for r in plan["recommendations"]:
+        product = product_by_id.get(r["sku_id"])
+        supplier = suppliers.get(product.supplier_id) if product and product.supplier_id else None
+
+        r["sku_name"] = product.product_name if product else r["sku_id"]
+        r["category"] = product.category if product else "Lainnya"
+        r["supplier_name"] = supplier.supplier_name if supplier else "Supplier tidak diketahui"
+        r["supplier_note"] = (
+            f"Kemungkinan tepat waktu {round(r['supplier_on_time_probability'] * 100)}%, "
+            f"estimasi kedatangan sampai {r['supplier_p90_lead_time_days']} hari."
+        )
+        r.update(generate_reasoning(r))
 
     run = DecisionRun(
         run_id=plan["run_id"], dataset_id=None, store_id=store_id,

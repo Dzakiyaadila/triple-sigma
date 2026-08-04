@@ -21,8 +21,11 @@ class ForecastPoint(BaseModel):
     q90: float
 
 
+
 class SKURecommendation(BaseModel):
     sku_id: str
+    sku_name: str    
+    category: str        
     priority_rank: int
     recommended_qty: int
     required_cash_rp: float
@@ -41,11 +44,16 @@ class SKURecommendation(BaseModel):
     wcar_before_rp: float
     wcar_after_rp: float
     incremental_wcar_added_rp: float
+    supplier_name: str 
+    supplier_note: str 
     supplier_on_time_probability: float
     supplier_p90_lead_time_days: int
     expected_nov_contribution_rp: float
     confidence: ConfidenceLevel
     reason_codes: list[str]
+    reasoning_short: str   
+    reason_more: str       
+    reason_not_more: str   
     warnings: list[str] = []
     status: RecommendationStatus = "belum_diputuskan"
 
