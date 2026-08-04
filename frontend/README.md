@@ -1,264 +1,142 @@
-# Restock Cerdas
+# RestockIQ Frontend — Dokumentasi Lengkap
+
+**Status:** Core journey wired penuh ke backend (bukan lagi data dummy lokal). File-file shadcn yang tidak terpakai sudah dibersihkan.
+
+---
+
+## 1. Ringkasan
+
+Frontend RestockIQ dibangun di atas **TanStack Start** (React 19 + Vite, file-based routing mirip Next.js tapi konvensi beda). Awalnya digenerate Lovable, sekarang sudah diaudit dan dirapikan — komponen yang dipakai murni yang relevan.
+
+**Konsep desain:** "buku kas/manifest toko" — warna hangat netral, font monospace untuk semua angka, badge kotak (bukan pill).
+
+---
+
+## 2. Tech stack
+
+| Layer | Pilihan |
+|---|---|
+| Framework | TanStack Start (React 19 + Vite) |
+| Routing | TanStack Router (file-based, lihat bagian 5) |
+| Styling | Tailwind CSS v4 (native `@theme`, format warna `oklch`) |
+| Data fetching | `fetch()` native lewat `src/lib/api.ts` (bukan React Query, meski provider-nya sudah terpasang) |
+| Komponen UI dasar | Cuma 3 dari shadcn: `slider`, `switch`, `tooltip` — sisanya custom (lihat `primitives.tsx`) |
+| Icon | lucide-react |
+
+---
+
+## 3. Struktur folder (final, setelah cleanup)
+
+```
+frontend/
+├── src/
+│   ├── components/
+│   │   ├── restock/
+│   │   │   ├── AppShell.tsx        # Sidebar + TopBar + Wizard Stepper
+│   │   │   ├── OrderCart.tsx       # Sidebar kanan "Keranjang restock"
+│   │   │   ├── PlanCard.tsx        # Satu Action Card
+│   │   │   ├── PlanDrawer.tsx      # Panel detail SKU (klik card)
+│   │   │   └── primitives.tsx      # GoldButton, GhostButton, FlatBadge, Meter, dst
+│   │   └── ui/
+│   │       ├── slider.tsx
+│   │       ├── switch.tsx
+│   │       └── tooltip.tsx
+│   ├── lib/
+│   │   ├── api.ts                  # SEMUA pemanggilan backend ada di sini
+│   │   ├── plan-data.ts            # tipe data, konstanta (STORES, dll), helper format
+│   │   ├── restock-store.tsx       # STATE GLOBAL — lihat bagian 6, paling penting
+│   │   ├── utils.ts                # helper cn() gabung className Tailwind
+│   │   ├── error-capture.ts        # infrastruktur error handling SSR
+│   │   └── error-page.ts           # halaman fallback kalau server crash
+│   ├── routes/                     # satu file = satu URL, lihat bagian 5
+│   │   ├── __root.tsx              # bungkus semua halaman (provider, AppShell)
+│   │   ├── index.tsx                → /
+│   │   ├── atur.tsx                 → /atur
+│   │   ├── rencana.tsx              → /rencana
+│   │   ├── konfirmasi.tsx           → /konfirmasi
+│   │   ├── riwayat.tsx              → /riwayat
+│   │   └── evaluasi.tsx             → /evaluasi
+│   ├── router.tsx                  # setup TanStack Router + QueryClient
+│   ├── server.ts / start.ts        # infrastruktur SSR, jarang disentuh
+│   └── styles.css                  # design token (warna, font) — Tailwind v4 @theme
+├── .env                             # VITE_API_URL
+└── vite.config.ts
+```
+
+---
+
+## 4. State global: `restock-store.tsx` — INI YANG PALING PENTING
+
+Semua state aplikasi (dataset dipilih, parameter keputusan, hasil rencana, keputusan per SKU, keranjang, riwayat) hidup di **satu React Context** (`RestockProvider`), dipasang sekali di `__root.tsx`, diakses halaman manapun lewat `useRestock()`.
+
+### Fungsi-fungsi kunci
+
+| Fungsi | Manggil backend? | Keterangan |
+|---|---|---|
+| `chooseDataset("demo")` | ✅ `GET /datasets/demo/readiness` | |
+| `chooseDataset("upload", file)` | ❌ Masih simulasi `setTimeout` | Backend belum ada endpoint upload |
+| `runPlan()` | ✅ `POST /decision-runs` | Hasil disimpan ke state `planItems` |
+| `setStatus(sku, status)` | ✅ `PATCH .../recommendations/{sku}` | Approve/reject sekaligus sync ke server |
+| `setQty(sku, qty)` | ✅ (kalau status sudah `disetujui`) | Sync qty yang diedit |
+| `confirmOrder()` | ✅ `POST .../confirm` | + catat ke riwayat LOKAL (lihat batasan di bawah) |
+
+### Alur data (penting dipahami)
+
+```
+User isi form di atur.tsx
+  → updateSetup() ubah state global
+  → klik "Buat Rencana Restock" → runPlan()
+  → runPlan() fetch ke backend, hasil masuk state `planItems`
+  → rencana.tsx baca `items` (turunan dari `planItems`) via useRestock()
+  → render jadi PlanCard satu-satu
+```
+
+---
+
+## 5. Halaman (routes)
+
+| File | URL | Isi |
+|---|---|---|
+| `index.tsx` | `/` | Pilih Data Demo / Upload |
+| `atur.tsx` | `/atur` | Toko, tanggal, budget, gaya kebijakan (3 pilihan), service level, protected SKU |
+| `rencana.tsx` | `/rencana` | Action Cards + summary strip + keranjang |
+| `konfirmasi.tsx` | `/konfirmasi` | Ringkasan akhir, ekspor CSV, konfirmasi |
+| `riwayat.tsx` | `/riwayat` | Tabel riwayat run (⚠️ lihat batasan) |
+| `evaluasi.tsx` | `/evaluasi` | Mode Teknis — metrik model (masih placeholder statis) |
 
-Buat web app bernama "RestockIQ" — asisten keputusan restock untuk pemilik UMKM ritel dengan modal kerja terbatas. Bahasa UI: Bahasa Indonesia. Target user utama non-teknis (pemilik toko), tapi aplikasi punya mode detail teknis untuk power user.
+**Konvensi routing TanStack Start** (beda dari Next.js): `index.tsx` → `/`, `$id.tsx` → dynamic segment, `__root.tsx` → root layout wajib. `routeTree.gen.ts` auto-generated, jangan diedit manual.
 
-═══════════════════════════════
+---
 
-ARAH DESAIN VISUAL
+## 6. Batasan yang perlu diketahui tim
 
-═══════════════════════════════
+1. **Riwayat cuma tersimpan di memory browser** (state React, bukan fetch dari backend) — kalau refresh halaman, riwayat hilang. Backend belum punya endpoint listing history.
+2. **Upload data toko sendiri masih simulasi** — backend belum ada endpoint-nya (stretch feature, prioritas rendah).
+3. **3 pilihan "Gaya kebijakan" belum benar-benar mengubah hasil** — mock ML backend belum implementasi diferensiasi berdasarkan `policy_preset`. Tombolnya bisa diklik dan terkirim, tapi efeknya baru kelihatan setelah optimizer asli Della terpasang.
+4. **Halaman Evaluasi masih placeholder** — metrik model (WMAPE dkk) hardcoded, belum ambil data asli.
+5. **Ekspor PDF sengaja dihapus** dari UI (keputusan scope, CSV cukup untuk MVP).
 
-Konsep: "buku kas/manifest toko" — bukan dashboard SaaS generik.
+---
 
-- Warna latar halaman: #F2F1EC. Permukaan kartu: #FCFBF7.
+## 7. Setup dari fresh clone
 
-- Teks utama: #1B2A22, teks sekunder: #5C6B62, garis pembatas: #DAD6C9.
-
-- Aksen utama/prioritas: #B8862F. Status aman: #3F6B4E. Risiko sedang: #C99A3E. Risiko tinggi: #A23B2E.
-
-- Font judul: Space Grotesk. Font body/UI: Inter. SEMUA angka (Rupiah, jumlah, persentase, kode SKU) wajib pakai font monospace (IBM Plex Mono) dengan tabular figures, rata kanan jika dalam list/tabel.
-
-- Border-radius kecil dan konsisten: 6-8px untuk card, 4px untuk badge (badge berbentuk kotak sudut tajam, BUKAN pill/bulat).
-
-- Tidak ada gradient, shadow tebal, glow, atau efek dekoratif. Whitespace lega tapi fungsional. Animasi hanya transisi halus 150-200ms, tidak ada efek masuk yang ramai.
-
-- Setiap Action Card punya garis vertikal tipis di sisi kiri dengan angka prioritas besar dalam monospace, dan hairline divider horizontal antar baris informasi di dalam card — meniru tampilan slip/nota, bukan card dashboard biasa.
-
-═══════════════════════════════
-
-STRUKTUR NAVIGASI
-
-═══════════════════════════════
-
-Sidebar kiri minimal (collapsible di mobile jadi bottom nav) dengan 4 item:
-
-- Beranda (dashboard utama)
-
-- Simulasi budget
-
-- Peta risiko
-
-- Riwayat
-
-═══════════════════════════════
-
-TOP BAR (persist di semua halaman)
-
-═══════════════════════════════
-
-- Dropdown "Pilih toko" — isi 5 opsi dummy (Toko Melati, Toko Anggrek, Toko Kenanga, Toko Dahlia, Toko Cempaka)
-
-- Input "Modal restock tersedia" — field angka dengan format Rupiah otomatis saat mengetik (contoh placeholder: Rp 3.000.000)
-
-- Tombol utama "Hitung rekomendasi" (warna aksen #B8862F, teks putih) — memicu perhitungan ulang
-
-- Badge kecil abu-abu di ujung kanan: "Data per [tanggal dummy]" — menunjukkan kapan dataset terakhir diperbarui
-
-- Toggle switch kecil berlabel "Detail teknis" — mengaktifkan/nonaktifkan tampilan lanjutan di seluruh halaman (default: OFF)
-
-═══════════════════════════════
-
-HALAMAN 1: BERANDA (dashboard utama)
-
-═══════════════════════════════
-
-1. RINGKASAN ATAS — 4 kartu kecil sejajar horizontal (stack vertikal di mobile):
-
-   - "SKU direkomendasikan" — angka besar monospace
-
-   - "Modal terpakai" — progress bar horizontal + teks "Rp X dari Rp Y tersedia"
-
-   - "Estimasi margin terselamatkan" — angka besar monospace, warna hijau aman
-
-   - "SKU risiko tinggi" — angka besar monospace, warna merah, dengan badge kotak kecil
-
-2. TOOLBAR FILTER di atas list card:
-
-   - Search box "Cari nama SKU..."
-
-   - Dropdown filter kategori produk
-
-   - Dropdown filter level risiko (Semua / Aman / Sedang / Tinggi)
-
-   - Tombol toggle tampilan: grid / list
-
-3. LIST ACTION CARDS — urut berdasarkan prioritas, tiap card berisi:
-
-   - Angka prioritas besar (monospace) di garis kiri card
-
-   - Nama SKU (Space Grotesk, medium weight) + kategori kecil di bawahnya (teks sekunder)
-
-   - Badge kotak kecil status risiko di kanan atas card (warna sesuai level, isi: "Aman" / "Sedang" / "Tinggi")
-
-   - Baris "Rekomendasi beli: [jumlah] unit — Rp [subtotal]" dalam monospace
-
-   - Baris alasan singkat dalam bahasa natural (1-2 kalimat, bukan istilah teknis), contoh: "Risiko kehabisan stok tinggi. Supplier cukup bisa diandalkan."
-
-   - JIKA toggle "Detail teknis" AKTIF: tampilkan baris tambahan — mini bar indikator forecast Q10/Q50/Q90, angka Lost Margin at Risk dan Working Capital at Risk (label singkat + tooltip penjelasan saat hover ikon info), skor keandalan supplier dalam persen
-
-   - Area interaksi bawah card: stepper angka "Sesuaikan jumlah" (tombol minus, input angka, tombol plus) dan tombol "Terima" (berubah jadi tombol "✓ Diterima" berwarna hijau muda setelah diklik, bisa diklik lagi untuk batal)
-
-   - Klik area card (selain tombol) membuka drawer detail dari sisi kanan layar
-
-4. DRAWER DETAIL SKU (slide dari kanan, menutupi maks 40% lebar layar di desktop, full-screen di mobile):
-
-   - Tombol close (X) di kiri atas drawer
-
-   - Judul nama SKU + kode SKU dalam monospace kecil
-
-   - Grafik area chart forecast permintaan (garis Q10, Q50, Q90) sepanjang beberapa hari ke depan
-
-   - Dua kotak angka besar berdampingan: "Potensi margin berisiko" dan "Modal tertahan berisiko" — masing-masing dengan satu kalimat penjelasan awam di bawahnya
-
-   - Info supplier: nama, badge skor keandalan, catatan histori keterlambatan singkat
-
-   - Paragraf alasan lebih lengkap (2-3 kalimat)
-
-   - Tombol "Sesuaikan jumlah" dan "Terima" (sama seperti di card, state tersinkron)
-
-5. SIDEBAR KANAN "Keranjang restock" (sticky, bisa di-collapse dengan tombol panah):
-
-   - Judul "Keranjang restock" + jumlah item
-
-   - List singkat SKU yang berstatus diterima: nama, jumlah, subtotal (monospace, rata kanan)
-
-   - Total keseluruhan vs budget tersedia — progress bar, berubah warna ke merah kalau melebihi budget
-
-   - JIKA kosong: ilustrasi garis sederhana + teks "Belum ada SKU yang diterima. Klik 'Terima' pada rekomendasi untuk menambahkan."
-
-   - Tombol besar di bawah "Tandai semua sudah dipesan" (nonaktif/abu-abu jika keranjang kosong)
-
-   - Setelah tombol diklik: muncul modal konfirmasi kecil "X item ditandai sudah dipesan" dengan tombol "Tutup", lalu keranjang kembali kosong dan status card berubah jadi "Sudah dipesan" (badge abu-abu)
-
-6. STATE KHUSUS:
-
-   - Loading: skeleton card berwarna abu-abu muda berkedip halus, muncul 4-5 placeholder card saat data sedang dihitung
-
-   - Empty (tidak ada rekomendasi/budget terlalu kecil): ilustrasi garis sederhana + judul "Belum ada rekomendasi untuk budget ini" + teks "Coba naikkan modal restock atau pilih toko lain" + tombol "Ubah modal"
-
-   - Error (gagal ambil data): ikon peringatan sederhana + teks "Gagal memuat rekomendasi. Coba lagi." + tombol "Muat ulang"
-
-7. BANNER DISCLAIMER (collapsible, posisi di bawah top bar, bisa ditutup dengan tombol X dan tidak muncul lagi di sesi itu):
-
-   Teks: "Sistem ini menggunakan data simulasi untuk validasi metodologi. Rekomendasi bersifat pendukung keputusan, bukan pengganti penilaian pemilik toko."
-
-═══════════════════════════════
-
-HALAMAN 2: SIMULASI BUDGET (/simulator)
-
-═══════════════════════════════
-
-- Judul halaman + satu kalimat penjelasan singkat
-
-- Slider besar horizontal berlabel "Skenario budget" dari 25% sampai 100% dari kebutuhan ideal, dengan angka Rupiah dinamis di atas slider
-
-- Saat slider digeser: 
-
-  - Card ringkasan di sampingnya update real-time (animasi angka berjalan halus, bukan lompat tiba-tiba): estimasi margin terselamatkan, jumlah SKU ter-cover
-
-  - Preview mini list Action Cards di bawahnya ikut berubah urutan/isi
-
-- Chart garis: sumbu X = persentase budget, sumbu Y = estimasi margin (Rupiah), dengan titik penanda posisi slider saat ini, dibandingkan dengan garis baseline "tanpa optimasi"
-
-- Kalimat penjelasan dinamis di bawah chart yang berubah sesuai posisi slider, contoh: "Pada budget ini, kamu mengamankan sekitar X% dari potensi margin maksimal"
-
-═══════════════════════════════
-
-HALAMAN 3: PETA RISIKO (/risk-map)
-
-═══════════════════════════════
-
-- Judul halaman + kalimat penjelasan singkat
-
-- Scatter plot interaktif: sumbu X = modal kerja berisiko (Rupiah), sumbu Y = margin berisiko (Rupiah)
-
-- Tiap titik = satu SKU, warna titik sesuai level risiko (memakai palet warna status yang sama)
-
-- Hover titik menampilkan tooltip kecil: nama SKU, kedua angka risikonya
-
-- Klik titik membuka drawer detail SKU yang sama seperti di halaman Beranda
-
-- Legenda warna kecil di pojok chart
-
-═══════════════════════════════
-
-HALAMAN 4: RIWAYAT (/history)
-
-═══════════════════════════════
-
-- Tabel sederhana dengan kolom: Tanggal, Toko, SKU, Jumlah dipesan, Status
-
-- Baris tabel memakai font monospace untuk kolom angka
-
-- Filter dropdown di atas tabel: berdasarkan toko, berdasarkan rentang tanggal
-
-- Jika kosong: teks "Belum ada riwayat keputusan restock"
-
-═══════════════════════════════
-
-DATA DUMMY
-
-═══════════════════════════════
-
-Buat 18-20 Action Card dummy dengan variasi realistis (campur risiko tinggi/sedang/aman, berbagai kategori produk retail Indonesia seperti sembako, minuman, kebutuhan rumah tangga). Gunakan struktur data berikut persis:
-
-{
-
-  "sku_id": "SKU-0231",
-
-  "sku_name": "Kopi Sachet 200g",
-
-  "category": "Minuman",
-
-  "store_id": "STR-03",
-
-  "priority_rank": 1,
-
-  "recommended_qty": 48,
-
-  "unit_cost": 12000,
-
-  "forecast": { "q10": 30, "q50": 45, "q90": 60 },
-
-  "stockout_risk_pct": 22.4,
-
-  "lmar": 1250000,
-
-  "wcar": 380000,
-
-  "supplier_reliability": 0.87,
-
-  "reasoning": "Risiko kehabisan stok tinggi. Supplier cukup bisa diandalkan.",
-
-  "status": "belum_diputuskan"
-
-}
-
-═══════════════════════════════
-
-PRIORITAS FOKUS
-
-═══════════════════════════════
-
-Utamakan kejelasan informasi dan kecepatan pengambilan keputusan untuk pengguna non-teknis di tampilan default. Detail teknis harus tetap ada dan lengkap, tapi disembunyikan di balik toggle "Detail teknis" dan drawer detail — jangan tampilkan istilah teknis (LMAR, WCAR, quantile) di layar utama secara default.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/6391dba7-92a1-4c53-a6bb-4c17af50e654).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+```bash
+cd frontend
+npm install
+cp .env.example .env    # isi VITE_API_URL=http://localhost:8000/api/v2
 npm run dev
 ```
+
+Cek port yang muncul di terminal (`Local: http://localhost:XXXX/`) — TanStack Start punya "sandbox port detection" jadi port bisa beda-beda tiap mesin, tidak selalu `5173`.
+
+**Backend harus sudah jalan duluan** (`localhost:8000`) sebelum coba fitur apapun yang manggil API — kalau belum, akan muncul error "Failed to fetch" di console.
+
+---
+
+## 8. Gotcha yang pernah dialami
+
+1. **Sidebar tidak muncul di halaman pertama** — dulu ada kondisi `hasCompletedRun` yang nyembunyiin sidebar sampai 1 run selesai. Sudah diperbaiki (sidebar sekarang selalu tampil).
+2. **42 dari 45 komponen shadcn/ui tidak terpakai** — sudah dihapus semua kecuali `slider`, `switch`, `tooltip` (dicek dengan grep pemakaian di seluruh `src/`, termasuk cross-import antar file `ui/*` sendiri).
+3. **CORS "Failed to fetch"** — pastikan port frontend ada di `ALLOWED_ORIGINS` backend, dan backend di-restart setelah ubah `.env`.
+4. **422 di `POST /decision-runs`** — `policy_preset` harus persis `lindungi_kas`/`seimbang`/`lindungi_ketersediaan` (Indonesia), bukan `protect_cash`/`balanced`/dst.
+5. **Project awalnya setup untuk `bun`** (ada `bun.lock`, `bunfig.toml`) tapi kita pakai `npm` — file bun sudah dihapus, aman diabaikan kalau ada referensi lama.
