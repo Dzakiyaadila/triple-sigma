@@ -1,116 +1,284 @@
-# RestockIQ — Cara Jalanin Project (Awal sampai Akhir)
+# RestockIQ — Cara Menjalankan Project
 
-Panduan ini buat siapa pun di tim yang mau jalanin RestockIQ dari nol di mesinnya sendiri — backend + database + frontend, semua sampai bisa dites di browser.
+Panduan ini menjelaskan cara menjalankan RestockIQ dari awal di mesin lokal, mencakup database, backend, frontend, pengujian, dan alur aplikasi.
 
 ---
 
 ## Prasyarat
 
-- Python 3.11+ (dipakai: 3.13)
-- Node.js + npm
-- PostgreSQL terinstall dan jalan (macOS: `brew install postgresql@15` lalu `brew services start postgresql@15`)
+- Python 3.12 direkomendasikan
+- Node.js dan npm
+- PostgreSQL 15 atau lebih baru
 - Git
+
+Untuk macOS, PostgreSQL dapat dipasang melalui Homebrew:
+
+```bash
+brew install postgresql@15
+brew services start postgresql@15
+```
+
+Versi PostgreSQL yang lebih baru juga dapat digunakan selama server aktif dan dapat menerima koneksi pada port `5432`.
 
 ---
 
-## Langkah 1 — Clone repo
+## Langkah 1 — Clone repository
 
 ```bash
 git clone <url-repo-restockiq>
 cd triple-sigma
 ```
 
-## Langkah 2 — Setup Backend
+---
+
+## Langkah 2 — Setup backend
+
+Masuk ke direktori backend:
 
 ```bash
 cd backend
-python3 -m venv venv
+```
+
+Buat dan aktifkan virtual environment:
+
+```bash
+python3.12 -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+```
+
+Pastikan versi Python yang aktif benar:
+
+```bash
+python --version
+```
+
+Install dependencies:
+
+```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+```
+
+Salin konfigurasi environment:
+
+```bash
 cp .env.example .env
 ```
 
-Buka `.env`, isi:
-```
+Isi `backend/.env`:
+
+```env
 DATABASE_URL=postgresql+psycopg://localhost:5432/restockiq
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:8080
 ```
-*(nanti kalau frontend jalan di port lain, tambahkan port itu ke `ALLOWED_ORIGINS` dan restart backend)*
+
+Project frontend saat ini umumnya berjalan pada port `8080`. Tetap periksa URL yang ditampilkan oleh Vite dan tambahkan origin tersebut ke `ALLOWED_ORIGINS` bila berbeda.
+
+### Membuat dan mengisi database
+
+Pastikan PostgreSQL aktif:
+
+```bash
+pg_isready
+```
+
+Buat database apabila belum tersedia:
 
 ```bash
 createdb restockiq
-python -m app.db.seed
 ```
-Harus muncul konfirmasi 6 tabel ter-load (`Dim_Stores → dim_stores: 5 baris`, dst).
+
+Jika muncul pesan bahwa database sudah ada, langkah tersebut dapatpg_isready
+```
+
+Buat database apabila belum tersedia:
 
 ```bash
-uvicorn app.main:app --reload --port 8000
-```
-Cek `http://localhost:8000/health` di browser — harus muncul `{"status":"ok"}`. **Biarkan terminal ini tetap terbuka.**
+createdb dilewati.
 
-## Langkah 3 — Setup Frontend (buka terminal BARU)
+Jalankan proses seed satu kali:
+
+```bash
+python -m app.db.seed
+```
+
+Harus muncul konfirmasi bahwa enam tabel dataset utama berhasil dimuat, seperti:
+
+```text
+Dim_Stores → dim_stores: 5 baris
+Dim_Products → dim_products: 31 baris
+Dim_Suppliers → dim_suppliers: 6 baris
+...
+```
+
+Database aplikasi dapat memiliki tabel tambahan untuk menyimpan decision run dan recommendation.
+
+### Menjalankan backend
+
+```bash
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+Cek:
+
+```text
+http://localhost:8000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+Dokumentasi API tersedia di:
+
+```text
+http://localhost:8000/docs
+```
+
+Biarkan terminal backend tetap terbuka.
+
+---
+
+## Langkah 3 — Setup frontend
+
+Buka terminal baru, lalu dari root repository:
 
 ```bash
 cd frontend
+```
+
+Jika `package-lock.json` tersedia, gunakan:
+
+```bash
+npm ci
+```
+
+Jika tidak tersedia, gunakan:
+
+```bash
 npm install
+```
+
+Salin konfigurasi environment:
+
+```bash
 cp .env.example .env
 ```
-Isi `.env`:
-```
+
+Isi `frontend/.env`:
+
+```env
 VITE_API_URL=http://localhost:8000/api/v2
 ```
+
+Jalankan frontend:
 
 ```bash
 npm run dev
 ```
-Cek output terminal buat lihat port asli (`Local: http://localhost:XXXX/`) — kalau bukan `5173`/`3000`, **tambahkan ke `ALLOWED_ORIGINS` di `backend/.env`, lalu restart backend** (Ctrl+C, jalankan ulang `uvicorn`).
 
-Buka URL yang muncul di browser.
+Periksa output terminal untuk mengetahui port aktual:
 
-## Langkah 4 — Coba alur lengkap
+```text
+Local: http://localhost:XXXX/
+```
 
-1. Beranda → klik **"Pilih Data Demo"**
-2. Lanjut ke **Atur Keputusan** → isi budget, pilih gaya kebijakan → **"Buat Rencana Restock"**
-3. Di **Rencana Restock**, setujui beberapa SKU (tombol Setujui/sesuaikan jumlah)
-4. Lanjut ke **Konfirmasi & Ekspor** → cek ringkasan, klik **"Ekspor CSV"** (harus ke-download), lalu **"Konfirmasi Pesanan"**
+Project saat ini umumnya berjalan di:
 
-Kalau semua langkah ini jalan tanpa error, setup kamu sudah benar.
+```text
+http://localhost:8080/
+```
+
+Apabila frontend memakai port yang belum tercantum pada `ALLOWED_ORIGINS`, tambahkan port tersebut ke `backend/.env`, lalu restart backend.
 
 ---
 
-## Menjalankan test backend
+## Langkah 4 — Mencoba alur lengkap
+
+1. Buka halaman Beranda.
+2. Klik **Pilih Data Demo**.
+3. Lanjut ke **Atur Keputusan**.
+4. Pilih toko, tanggal, budget, horizon, dan gaya kebijakan.
+5. Klik **Buat Rencana Restock**.
+6. Pada halaman Rencana Restock, setujui, edit, atau tolak beberapa SKU.
+7. Lanjut ke **Konfirmasi & Ekspor**.
+8. Klik **Ekspor CSV** dan pastikan file berhasil diunduh.
+9. Klik **Konfirmasi Pesanan**.
+10. Buka **Riwayat Keputusan** dan pastikan run yang dikonfirmasi muncul.
+
+Jika seluruh langkah berjalan tanpa error, setup lokal sudah berhasil.
+
+> Catatan: recommendation analytics saat ini masih memakai mock planner hingga implementasi ML asli diintegrasikan.
+
+---
+
+## Menjalankan backend tests
+
+Dari direktori `backend`:
 
 ```bash
-cd backend
 source venv/bin/activate
-pytest tests/ -v
+python -m pytest tests/ -v
 ```
-Harus 4 test PASSED.
+
+Baseline saat dokumentasi ini ditulis:
+
+```text
+4 tests passed
+```
+
+Jumlah test dapat bertambah seiring pengembangan.
 
 ---
 
-## Kalau ada error
+## Menjalankan frontend build
+
+Dari direktori `frontend`:
+
+```bash
+npm run build
+```
+
+Jika script lint tersedia:
+
+```bash
+npm run lint
+```
+
+---
+
+## Troubleshooting
 
 | Gejala | Kemungkinan penyebab | Solusi |
 |---|---|---|
-| `ModuleNotFoundError` pas jalanin Python | Lupa aktifkan venv | `source venv/bin/activate` |
-| Backend crash/segfault pas seed | Versi psycopg2/pandas salah | Pastikan `requirements.txt` pakai `psycopg[binary]==3.2.3` dan `pandas>=2.2.3` |
-| "Failed to fetch" di browser | Backend belum jalan, atau CORS | Cek `curl http://localhost:8000/health`, cek `ALLOWED_ORIGINS` sudah include port frontend, restart backend |
-| 422 di `POST /decision-runs` | `policy_preset` salah format | Harus `lindungi_kas`/`seimbang`/`lindungi_ketersediaan` (lihat pesan error detail dari `extractErrorMessage`) |
-| `.env` yang diubah nggak ke-apply | Server belum di-restart | `.env` cuma dibaca sekali saat start, wajib restart manual |
+| `ModuleNotFoundError` saat menjalankan Python | Virtual environment belum aktif | Jalankan `source venv/bin/activate` |
+| SciPy atau pandas mencoba di-compile dan gagal | Python terlalu baru, misalnya Python 3.14 | Gunakan Python 3.12 dan buat ulang virtual environment |
+| `No module named psycopg2` | `DATABASE_URL` masih memakai driver default PostgreSQL | Gunakan `postgresql+psycopg://localhost:5432/restockiq` |
+| `database "restockiq" already exists` | Database sudah pernah dibuat | Lewati perintah `createdb restockiq` |
+| `Failed to fetch` di browser | Backend belum berjalan atau konfigurasi CORS tidak sesuai | Cek `curl http://localhost:8000/health` dan `ALLOWED_ORIGINS` |
+| HTTP 422 pada `POST /decision-runs` | Nilai `policy_preset` tidak valid | Gunakan `lindungi_kas`, `seimbang`, atau `lindungi_ketersediaan` |
+| Perubahan `.env` tidak terpakai | Backend belum di-restart | Stop server dengan `Ctrl+C`, lalu jalankan kembali Uvicorn |
+| `cp .env.example .env` gagal pada frontend | `.env.example` belum tersedia | Pastikan file `frontend/.env.example` sudah terdapat di repository |
 
-Detail lebih lengkap ada di `backend/README.md` dan `frontend/README.md`.
+Detail tambahan tersedia di:
+
+- `backend/README.md`
+- `frontend/README.md`
+- `docs/ML_INTEGRATION_NOTES.md`
 
 ---
 
-## Struktur repo (ringkas)
+## Struktur repository
 
-```
+```text
 triple-sigma/
-├── backend/     → lihat backend/README.md
-├── frontend/    → lihat frontend/README.md
+├── backend/
+├── frontend/
 ├── docs/
-│   └── ML_INTEGRATION_NOTES.md   → wajib dibaca Della sebelum integrasi
-└── data/synthetic/
-    └── RestockIQ_Dataset_Sintetis.xlsx
+│   └── ML_INTEGRATION_NOTES.md
+└── data/
+    └── synthetic/
+        └── RestockIQ_Dataset_Sintetis.xlsx
 ```
