@@ -9,7 +9,7 @@ from datetime import date, timedelta
 
 
 def generate_restock_plan(products: list[dict], store_id: str, decision_date: str,
-                           budget_rp: float, policy_preset: str = "balanced",
+                           budget_rp: float, policy_preset: str = "seimbang",
                            horizon_days: int = 7) -> dict:
     rng = random.Random(f"{store_id}-{decision_date}-{budget_rp}")
 

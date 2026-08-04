@@ -104,7 +104,7 @@ class DecisionRun(Base):
     store_id = Column(String, nullable=False)
     decision_date = Column(Date, nullable=False)
     budget_rp = Column(Float, nullable=False)
-    policy_preset = Column(String, default="balanced")
+    policy_preset = Column(String, default="seimbang")
     constraints_json = Column(JSON)
     model_version = Column(String)
     data_hash = Column(String)

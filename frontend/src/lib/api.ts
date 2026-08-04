@@ -1,35 +1,66 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v2";
+const API_BASE =
+  import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v2";
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+interface FastApiValidationError {
+  loc?: unknown[];
+  msg?: string;
+}
+
+interface ApiErrorBody {
+  detail?: string | FastApiValidationError[];
+  error?: {
+    message?: string;
+  };
+}
+
+async function request<T>(
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
+
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    const message = extractErrorMessage(body) ?? `Request gagal (${res.status})`;
+    const body: unknown = await res.json().catch(() => null);
+    const message =
+      extractErrorMessage(body) ?? `Request gagal (${res.status})`;
+
     throw new Error(message);
   }
-  return res.json();
+
+  return res.json() as Promise<T>;
 }
 
 function extractErrorMessage(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const b = body as Record<string, unknown>;
+  if (!body || typeof body !== "object") {
+    return null;
+  }
 
-  // Format validasi Pydantic FastAPI: { detail: [{ loc, msg, type }, ...] }
-  if (Array.isArray(b.detail)) {
-    return b.detail
-      .map((d: unknown) => {
-        const item = d as { loc?: unknown[]; msg?: string };
+  const parsed = body as ApiErrorBody;
+
+  // Format validasi Pydantic FastAPI:
+  // { detail: [{ loc, msg, type }, ...] }
+  if (Array.isArray(parsed.detail)) {
+    return parsed.detail
+      .map((item) => {
         const field = item.loc?.slice(1).join(".") ?? "";
-        return field ? `${field}: ${item.msg}` : item.msg;
+        const message = item.msg ?? "Validasi gagal";
+
+        return field ? `${field}: ${message}` : message;
       })
       .join("; ");
   }
-  if (typeof b.detail === "string") return b.detail;
-  const err = b.error as { message?: string } | undefined;
-  if (err?.message) return err.message;
+
+  if (typeof parsed.detail === "string") {
+    return parsed.detail;
+  }
+
+  if (parsed.error?.message) {
+    return parsed.error.message;
+  }
+
   return null;
 }
 
@@ -56,6 +87,11 @@ export interface ForecastPoint {
   q90: number;
 }
 
+export type PolicyPreset =
+  | "lindungi_kas"
+  | "seimbang"
+  | "lindungi_ketersediaan";
+
 export interface ApiRecommendation {
   sku_id: string;
   sku_name: string;
@@ -69,7 +105,7 @@ export interface ApiRecommendation {
   forecast_q10: number;
   forecast_q50: number;
   forecast_q90: number;
-  forecast_daily_series: ForecastPoint[];
+  forecast_daily_series?: ForecastPoint[];
   stockout_risk_before: number;
   stockout_risk_after: number;
   lmar_before_rp: number;
@@ -113,7 +149,7 @@ export interface CreateDecisionRunPayload {
   decision_date: string;
   budget_rp: number;
   horizon_days: number;
-  policy_preset: string;
+  policy_preset: PolicyPreset;
 }
 
 export function createDecisionRun(payload: CreateDecisionRunPayload) {

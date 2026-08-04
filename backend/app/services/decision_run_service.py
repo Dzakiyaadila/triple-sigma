@@ -7,7 +7,7 @@ from app.services.reasoning import generate_reasoning
 
 
 def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: float,
-                  policy_preset: str = "balanced", horizon_days: int = 7) -> dict:
+                  policy_preset: str = "seimbang", horizon_days: int = 7) -> dict:
     store = db.get(Store, store_id)
     if not store:
         raise ValueError(f"Toko {store_id} tidak ditemukan")
