@@ -11,7 +11,6 @@ import {
   DATA_DATE_ISO,
   DEMO_ISSUES,
   DEMO_SUMMARY,
-  PLAN_ITEMS,
   STORES,
   UPLOAD_ISSUES,
   UPLOAD_SUMMARY,
@@ -21,6 +20,13 @@ import {
   type PolicyStyle,
   type RunRow,
 } from "./plan-data";
+import {
+  getDemoDatasetReadiness,
+  createDecisionRun,
+  updateRecommendation as apiUpdateRecommendation,
+  confirmDecisionRun,
+  type ApiRecommendation,
+} from "./api";
 
 export type DatasetKind = "demo" | "upload";
 export type ValidationPhase = "idle" | "running" | "done";
@@ -30,6 +36,7 @@ export type JobError = "solver_timeout" | null;
 export interface DatasetState {
   kind: DatasetKind;
   fileName?: string;
+  datasetId: string;
   summary: typeof DEMO_SUMMARY;
   issues: typeof DEMO_ISSUES;
   hasFatal: boolean;
@@ -67,7 +74,8 @@ interface Ctx {
   job: JobPhase;
   jobStep: number;
   jobError: JobError;
-  runPlan: (opts?: { fail?: boolean }) => void;
+  runId: string | null;
+  runPlan: () => void;
   resetRun: () => void;
 
   items: PlanItem[];
@@ -106,11 +114,42 @@ export const VALIDATION_STEP_LABELS = [
 
 const RestockCtx = createContext<Ctx | null>(null);
 
-const POLICY_FACTOR: Record<PolicyStyle, number> = {
-  lindungi_kas: 0.75,
-  seimbang: 1,
-  lindungi_ketersediaan: 1.2,
-};
+function toPlanItem(r: ApiRecommendation): PlanItem {
+  return {
+    sku_id: r.sku_id,
+    sku_name: r.sku_name,
+    category: r.category,
+    priority_rank: r.priority_rank,
+    recommended_qty: r.recommended_qty,
+    required_cash_rp: r.required_cash_rp,
+    inventory_on_hand: r.inventory_on_hand,
+    inventory_on_order: r.inventory_on_order,
+    effective_inventory: r.effective_inventory,
+    forecast_q10: r.forecast_q10,
+    forecast_q50: r.forecast_q50,
+    forecast_q90: r.forecast_q90,
+    stockout_risk_before: r.stockout_risk_before,
+    stockout_risk_after: r.stockout_risk_after,
+    lmar_before_rp: r.lmar_before_rp,
+    lmar_after_rp: r.lmar_after_rp,
+    incremental_lmar_avoided_rp: r.incremental_lmar_avoided_rp,
+    wcar_before_rp: r.wcar_before_rp,
+    wcar_after_rp: r.wcar_after_rp,
+    incremental_wcar_added_rp: r.incremental_wcar_added_rp,
+    supplier_name: r.supplier_name,
+    supplier_on_time_probability: r.supplier_on_time_probability,
+    supplier_p90_lead_time_days: r.supplier_p90_lead_time_days,
+    supplier_note: r.supplier_note,
+    expected_nov_contribution_rp: r.expected_nov_contribution_rp,
+    confidence: r.confidence,
+    reason_codes: r.reason_codes,
+    reasoning_short: r.reasoning_short,
+    reason_more: r.reason_more,
+    reason_not_more: r.reason_not_more,
+    warnings: r.warnings,
+    status: "belum_diputuskan",
+  };
+}
 
 export function RestockProvider({ children }: { children: ReactNode }) {
   const [technical, setTechnical] = useState(false);
@@ -133,6 +172,8 @@ export function RestockProvider({ children }: { children: ReactNode }) {
   const [job, setJob] = useState<JobPhase>("idle");
   const [jobStep, setJobStep] = useState(0);
   const [jobError, setJobError] = useState<JobError>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [planItems, setPlanItems] = useState<PlanItem[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [openSku, setOpenSku] = useState<string | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
@@ -146,18 +187,53 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     clearTimers();
     setValidation("running");
     setValidationStep(0);
+
+    if (kind === "demo") {
+      VALIDATION_STEP_LABELS.forEach((_, i) => {
+        timers.current.push(window.setTimeout(() => setValidationStep(i), i * 400));
+      });
+      getDemoDatasetReadiness()
+        .then((res) => {
+          setDataset({
+            kind: "demo",
+            datasetId: res.dataset_id,
+            summary: {
+              days: res.days_covered,
+              stores: res.store_count,
+              skus: res.sku_count,
+              suppliers: res.supplier_count,
+              rows: res.transaction_count,
+            },
+            issues: res.warnings.map((w) => ({
+              where: "Data demo",
+              message: w,
+              severity: "warning" as const,
+            })),
+            hasFatal: !res.is_ready,
+          });
+          setValidation("done");
+        })
+        .catch((err) => {
+          console.error("Gagal memuat data demo:", err);
+          setValidation("idle");
+        });
+      return;
+    }
+
+    // Unggah data toko sendiri: backend belum menyediakan endpoint ini,
+    // jadi untuk sementara masih simulasi (lihat MVP Final bagian 3.3, stretch).
     VALIDATION_STEP_LABELS.forEach((_, i) => {
       timers.current.push(window.setTimeout(() => setValidationStep(i), i * 650));
     });
     timers.current.push(
       window.setTimeout(() => {
-        const issues = kind === "demo" ? DEMO_ISSUES : UPLOAD_ISSUES;
         setDataset({
-          kind,
+          kind: "upload",
+          datasetId: "upload-not-implemented",
           ...(fileName ? { fileName } : {}),
-          summary: kind === "demo" ? DEMO_SUMMARY : UPLOAD_SUMMARY,
-          issues,
-          hasFatal: issues.some((i) => i.severity === "error"),
+          summary: UPLOAD_SUMMARY,
+          issues: UPLOAD_ISSUES,
+          hasFatal: UPLOAD_ISSUES.some((i) => i.severity === "error"),
         });
         setValidation("done");
       }, VALIDATION_STEP_LABELS.length * 650),
@@ -175,53 +251,50 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     setSetup((s) => ({ ...s, ...patch }));
   }, []);
 
-  const runPlan = useCallback((opts?: { fail?: boolean }) => {
+  const runPlan = useCallback(() => {
+    if (!dataset) return;
     clearTimers();
     setJobError(null);
     setJob("running");
     setJobStep(0);
     JOB_STEPS.forEach((_, i) => {
-      timers.current.push(window.setTimeout(() => setJobStep(i), i * 700));
+      timers.current.push(window.setTimeout(() => setJobStep(i), i * 500));
     });
-    timers.current.push(
-      window.setTimeout(() => {
-        if (opts?.fail) {
-          setJob("error");
-          setJobError("solver_timeout");
-        } else {
-          setJob("done");
-        }
-      }, JOB_STEPS.length * 700),
-    );
-  }, []);
+
+    createDecisionRun({
+      dataset_id: dataset.datasetId,
+      store_id: setup.storeId,
+      decision_date: setup.date,
+      budget_rp: setup.budget,
+      horizon_days: setup.horizon,
+      policy_preset: setup.policy,
+    })
+      .then((res) => {
+        setRunId(res.run_id);
+        setPlanItems(res.recommendations.map(toPlanItem));
+        setJob("done");
+      })
+      .catch((err) => {
+        console.error("Gagal membuat rencana restock:", err);
+        setJob("error");
+        setJobError("solver_timeout");
+      });
+  }, [dataset, setup]);
 
   const resetRun = useCallback(() => {
     clearTimers();
     setJob("idle");
     setJobStep(0);
     setJobError(null);
+    setRunId(null);
+    setPlanItems([]);
     setDecisions({});
   }, []);
 
-  // Budget + policy aware allocation.
   const items = useMemo(() => {
     if (job !== "done") return [];
-    if (setup.budget <= 0) return [];
-    const factor = POLICY_FACTOR[setup.policy] * (setup.horizon === 14 ? 1.35 : 1);
-    const scaled = PLAN_ITEMS.map((it) => {
-      const qty = Math.max(1, Math.round(it.recommended_qty * factor));
-      return { ...it, recommended_qty: qty, required_cash_rp: qty * unitCost(it) };
-    });
-    const list: PlanItem[] = [];
-    let spent = 0;
-    for (const it of scaled) {
-      const isProtected = setup.protectedSkus.includes(it.sku_id);
-      if (!isProtected && spent + it.required_cash_rp > setup.budget) continue;
-      spent += it.required_cash_rp;
-      list.push(it);
-    }
-    return list.map((it, i) => ({ ...it, priority_rank: i + 1 }));
-  }, [job, setup.budget, setup.policy, setup.horizon, setup.protectedSkus]);
+    return planItems;
+  }, [job, planItems]);
 
   const qtyOf = useCallback(
     (item: PlanItem) => decisions[item.sku_id]?.qty ?? item.recommended_qty,
@@ -232,16 +305,38 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     [decisions],
   );
 
-  const setQty = useCallback((sku: string, qty: number) => {
-    setDecisions((d) => ({
-      ...d,
-      [sku]: { status: d[sku]?.status ?? "belum_diputuskan", qty: Math.max(0, qty) },
-    }));
-  }, []);
+  const setQty = useCallback(
+    (sku: string, qty: number) => {
+      setDecisions((d) => {
+        const status = d[sku]?.status ?? "belum_diputuskan";
+        const next = { ...d, [sku]: { status, qty: Math.max(0, qty) } };
+        if (runId && status === "disetujui") {
+          apiUpdateRecommendation(runId, sku, { status, adjusted_qty: Math.max(0, qty) }).catch(
+            (err) => console.error("Gagal menyimpan perubahan jumlah:", err),
+          );
+        }
+        return next;
+      });
+    },
+    [runId],
+  );
 
-  const setStatus = useCallback((sku: string, status: ItemStatus) => {
-    setDecisions((d) => ({ ...d, [sku]: { status, qty: d[sku]?.qty ?? 0 } }));
-  }, []);
+  const setStatus = useCallback(
+    (sku: string, status: ItemStatus) => {
+      setDecisions((d) => {
+        const item = items.find((i) => i.sku_id === sku);
+        const qty = d[sku]?.qty ?? item?.recommended_qty ?? 0;
+        const next = { ...d, [sku]: { status, qty } };
+        if (runId) {
+          apiUpdateRecommendation(runId, sku, { status, adjusted_qty: qty }).catch((err) =>
+            console.error("Gagal menyimpan status keputusan:", err),
+          );
+        }
+        return next;
+      });
+    },
+    [runId, items],
+  );
 
   const cart = useMemo(
     () =>
@@ -258,8 +353,15 @@ export function RestockProvider({ children }: { children: ReactNode }) {
 
   const confirmOrder = useCallback(() => {
     const store = STORES.find((s) => s.id === setup.storeId)!;
+
+    if (runId) {
+      confirmDecisionRun(runId).catch((err) =>
+        console.error("Gagal konfirmasi ke server:", err),
+      );
+    }
+
     const run: RunRow = {
-      id: `RUN-${Date.now()}`,
+      id: runId ?? `RUN-${Date.now()}`,
       date: setup.date,
       storeId: setup.storeId,
       storeName: store.name,
@@ -276,7 +378,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     };
     setRuns((r) => [run, ...r]);
     return run;
-  }, [cart, cartTotal, setup.budget, setup.date, setup.storeId]);
+  }, [cart, cartTotal, setup.budget, setup.date, setup.storeId, runId]);
 
   const value: Ctx = {
     technical,
@@ -291,6 +393,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     job,
     jobStep,
     jobError,
+    runId,
     runPlan,
     resetRun,
     items,

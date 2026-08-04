@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, Literal
 
-PolicyPreset = Literal["protect_cash", "balanced", "protect_availability"]
+PolicyPreset = Literal["lindungi_kas", "seimbang", "lindungi_ketersediaan"]
 ConfidenceLevel = Literal["tinggi", "sedang", "rendah"]
 RecommendationStatus = Literal["belum_diputuskan", "disetujui", "diedit", "ditolak"]
 
@@ -79,7 +79,7 @@ class DecisionRunRequest(BaseModel):
     decision_date: str
     budget_rp: float
     horizon_days: int = 7
-    policy_preset: PolicyPreset = "balanced"
+    policy_preset: PolicyPreset = "seimbang"
     min_fill_rate: Optional[float] = None
     protected_sku_ids: list[str] = []
 

@@ -43,11 +43,11 @@ export const DATA_DATE = "28 Jul 2026";
 export const DATA_DATE_ISO = "2026-07-28";
 
 export const STORES = [
-  { id: "STR-01", name: "Toko Melati" },
-  { id: "STR-02", name: "Toko Anggrek" },
-  { id: "STR-03", name: "Toko Kenanga" },
-  { id: "STR-04", name: "Toko Dahlia" },
-  { id: "STR-05", name: "Toko Cempaka" },
+  { id: "S01", name: "Toko Berkah Jaya" },
+  { id: "S02", name: "Minimarket Sido Mulyo" },
+  { id: "S03", name: "Warung Bu Yanti" },
+  { id: "S04", name: "Toko Sembako Amanah" },
+  { id: "S05", name: "Minimarket Cahaya Baru" },
 ];
 
 export const DEMO_SUMMARY = {

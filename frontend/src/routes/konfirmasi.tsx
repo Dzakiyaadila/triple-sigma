@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { CheckCircle2, Download, FileText } from "lucide-react";
+import { CheckCircle2, Download } from "lucide-react";
 import { formatRupiah } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
+import { exportCsvUrl } from "@/lib/api";
 import { EmptyState, GhostButton, GoldButton, Num, SectionTitle, SimDataBadge } from "@/components/restock/primitives";
 
 export const Route = createFileRoute("/konfirmasi")({
@@ -18,7 +19,7 @@ export const Route = createFileRoute("/konfirmasi")({
 });
 
 function Konfirmasi() {
-  const { cart, cartTotal, setup, overBudget, confirmOrder, resetRun } = useRestock();
+  const { cart, cartTotal, setup, overBudget, confirmOrder, resetRun, runId } = useRestock();
   const navigate = useNavigate();
   const [done, setDone] = useState<{ count: number; total: number } | null>(null);
 
@@ -78,8 +79,15 @@ function Konfirmasi() {
       ) : null}
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
-        <GhostButton><Download className="h-4 w-4" />Ekspor CSV</GhostButton>
-        <GhostButton><FileText className="h-4 w-4" />Ekspor PDF</GhostButton>
+        <GhostButton
+          disabled={!runId}
+          onClick={() => {
+            if (runId) window.open(exportCsvUrl(runId), "_blank");
+          }}
+        >
+          <Download className="h-4 w-4" />
+          Ekspor CSV
+        </GhostButton>
         <GoldButton
           disabled={overBudget}
           onClick={() => { const run = confirmOrder(); setDone({ count: run.approvedCount, total: run.total }); }}
