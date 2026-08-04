@@ -69,7 +69,21 @@ def update_recommendation(db: Session, plan: dict, sku_id: str, status: str,
     product = db.get(Product, sku_id)
     unit_cost = product.unit_cost_rp if product else 0
 
-    new_qty = 0 if status == "ditolak" else (adjusted_qty if adjusted_qty is not None else rec["recommended_qty"])
+    new_qty = (
+        0
+        if status == "ditolak"
+        else (
+            adjusted_qty
+            if adjusted_qty is not None
+            else rec["recommended_qty"]
+        )
+    )
+
+    if status == "disetujui" and new_qty <= 0:
+        raise ValueError(
+            "Jumlah SKU yang disetujui harus lebih dari 0 unit."
+        )
+
     new_cost = new_qty * unit_cost
 
     hypothetical_total = sum(
@@ -106,8 +120,22 @@ def update_recommendation(db: Session, plan: dict, sku_id: str, status: str,
 
 
 def confirm_run(plan: dict) -> dict:
-    approved = [r for r in plan["recommendations"] if r["status"] == "disetujui"]
-    total_cost = sum(r["required_cash_rp"] for r in approved)
+    approved = [
+        recommendation
+        for recommendation in plan["recommendations"]
+        if recommendation["status"] == "disetujui"
+        and (
+            recommendation["adjusted_qty"]
+            if recommendation.get("adjusted_qty") is not None
+            else recommendation["recommended_qty"]
+        ) > 0
+    ]
+
+    total_cost = sum(
+        recommendation["required_cash_rp"]
+        for recommendation in approved
+    )
+
     return {
         "confirmed_count": len(approved),
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
