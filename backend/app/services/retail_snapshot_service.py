@@ -727,7 +727,7 @@ def build_retail_snapshot(
             f"{calendar_min_date.isoformat()} dan "
             f"{latest_valid_decision_date.isoformat()}."
         )
-    
+
     weekend_col = _column(
         calendar_table,
         "is_weekend",
