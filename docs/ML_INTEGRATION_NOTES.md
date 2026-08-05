@@ -55,17 +55,25 @@ def generate_restock_plan(
   "priority_rank": int,
   "recommended_qty": int,
   "required_cash_rp": float,
-  "inventory_on_hand": int,
-  "inventory_on_order": int,
-  "effective_inventory": int,
+  "inventory_on_hand": float,
+  "inventory_on_order": float,
+  "effective_inventory": float,
   "forecast_q10": float, "forecast_q50": float, "forecast_q90": float,
-  "forecast_daily_series": [{"date": "YYYY-MM-DD", "q10": float, "q50": float, "q90": float}, ...],
+  "forecast_daily_series": [
+      {
+          "date": "YYYY-MM-DD",
+          "q10": float,
+          "q50": float,
+          "q90": float
+      },
+      ...
+  ],  # optional; backward compatibility only
   "stockout_risk_before": float,      # 0.0 - 1.0
   "stockout_risk_after": float,
   "lmar_before_rp": float, "lmar_after_rp": float, "incremental_lmar_avoided_rp": float,
   "wcar_before_rp": float, "wcar_after_rp": float, "incremental_wcar_added_rp": float,
   "supplier_on_time_probability": float,   # 0.0 - 1.0
-  "supplier_p90_lead_time_days": int,
+  "supplier_p90_lead_time_days": float,
   "expected_nov_contribution_rp": float,
   "confidence": str,        # HARUS persis: "tinggi" / "sedang" / "rendah"
   "reason_codes": list[str],   # HARUS dari daftar valid di bagian 4, bukan bebas
@@ -73,17 +81,32 @@ def generate_restock_plan(
   "status": "belum_diputuskan",   # selalu ini, backend yang ubah nanti
 }
 ```
+`forecast_daily_series` bersifat opsional dan hanya dipertahankan untuk
+backward compatibility selama masa transisi. Real pipeline tidak boleh
+membuat daily path dengan membagi forecast kumulatif atau menambahkan
+tren sintetis.
+
+Model final menghasilkan cumulative quantiles untuk horizon H1, H7, dan
+H14. Field `forecast_q10`, `forecast_q50`, dan `forecast_q90` mengacu pada
+horizon yang dipilih pada decision run.
 
 **TIDAK PERLU** (backend yang isi): `sku_name`, `category`, `supplier_name`, `supplier_note`, `reasoning_short`, `reason_more`, `reason_not_more`.
 
 ---
 
-## 3. `policy_preset` — english
+## 3. `policy_preset` — nilai public API
 
-karena draf awal pakai istilah Inggris. **Nilai yang benar dan final:**
-```
-`protect_cash`/`balanced`/`protect_availability`.
-```
+Nilai public API yang final:
+
+lindungi_kas
+seimbang
+lindungi_ketersediaan
+
+Modul ML boleh melakukan mapping internal ke enum/configuration berbahasa Inggris, tetapi boundary API dan persistence tetap memakai nilai Bahasa Indonesia.
+
+forecast_daily_series bersifat optional untuk backward compatibility.
+Model final menghasilkan cumulative quantiles H1/H7/H14 dan tidak boleh
+membuat daily path secara sintetis.
 
 **Status implementasi saat ini:** mock backend **belum** benar-benar mengubah hasil berdasarkan nilai ini — 3 tombol di UI udah bisa diklik dan terkirim ke backend, tapi efeknya baru kerasa begitu fungsi kamu beneran membedakan strategi alokasi berdasarkan parameter ini. Ini salah satu hal paling penting yang dicek juri (nunjukkin `policy_preset` benar-benar ngubah trade-off, bukan cuma UI kosmetik).
 
@@ -117,6 +140,40 @@ units_demanded_est, demand_profile, avg_daily_demand_per_store, cash_locked_in_s
 ```
 Ada test otomatis (`test_oracle_firewall.py`) yang cek kode `decision_run_service.py` nggak pernah nyebut nama kolom ini — kalau kamu nambah kode yang query kolom ini dari database, kabarin dulu biar test-nya disesuaikan (atau dipastikan itu emang cuma dipakai untuk evaluasi, bukan input model).
 
+Ada satu perbaikan kecil di frontend payload
+
+Sekarang:
+
+```typescript
+export interface CreateDecisionRunPayload {
+  dataset_id: string;
+  store_id: string;
+  decision_date: string;
+  budget_rp: number;
+  horizon_days: number;
+  policy_preset: string;
+}
+```
+Lebih aman diselaraskan dengan backend:
+
+
+```typescript
+export type PolicyPreset =
+  | "lindungi_kas"
+  | "seimbang"
+  | "lindungi_ketersediaan";
+
+export interface CreateDecisionRunPayload {
+  dataset_id: string;
+  store_id: string;
+  decision_date: string;
+  budget_rp: number;
+  horizon_days: number;
+  policy_preset: PolicyPreset;
+}
+```
+Dengan ini TypeScript akan menangkap salah ketik sebelum request sampai ke backend.
+
 ---
 
 ## 6. Data yang tersedia (sumber: dataset sintetis, sudah di-load ke PostgreSQL) - untuk mock
@@ -134,12 +191,44 @@ Ada test otomatis (`test_oracle_firewall.py`) yang cek kode `decision_run_servic
 
 ---
 
-## 7. Cara integrasi nanti (teknis)
+## 7. Cara integrasi real pipeline
 
-Fungsimu tinggal ditaruh/di-import ke `backend/app/ml/restock_plan.py`, replace fungsi mock yang sekarang ada di situ — **signature harus sama persis** (nama parameter, urutan). Setelah itu, **tidak ada perubahan apapun** yang dibutuhkan di:
-- `decision_run_service.py` (udah otomatis enrich sku_name/category/supplier/reasoning)
-- Schema Pydantic (udah sesuai)
-- Frontend (udah manggil API, nggak peduli isi dalamnya)
+Public API dan core journey frontend dipertahankan supaya integrasi model
+tidak memerlukan perubahan besar pada UI.
+
+Backend bertanggung jawab untuk:
+
+- membaca data dari PostgreSQL;
+- menerapkan cutoff berdasarkan `decision_date`;
+- menyusun snapshot historis yang prediction-time safe;
+- melakukan enrichment nama produk, kategori, supplier, dan reasoning text.
+
+Modul ML bertanggung jawab untuk:
+
+- validasi Oracle firewall;
+- demand reconstruction;
+- cumulative probabilistic forecasting;
+- supplier-risk estimation;
+- effective inventory;
+- LMAR/WCAR;
+- exact cash-constrained allocation;
+- confidence, warnings, dan `reason_codes`.
+
+Signature mock saat ini masih memakai:
+
+```python
+generate_restock_plan(
+    products,
+    store_id,
+    decision_date,
+    budget_rp,
+    policy_preset,
+    horizon_days,
+)
+```
+Signature tersebut merupakan contract sementara untuk mock. Integrasi real
+pipeline dapat menggantinya dengan typed snapshot internal selama response
+utama ke backend/frontend tetap kompatibel dan perubahan disepakati bersama.
 
 ---
 
