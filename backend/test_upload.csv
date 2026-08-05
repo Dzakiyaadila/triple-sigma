@@ -1,0 +1,5 @@
+date,store_id,sku_id,units_sold,stock_on_hand_start,stock_on_hand_end,stockout_flag,promo_flag
+2024-01-01,S01,SKU001,12,50,38,False,False
+2024-01-02,S01,SKU001,15,38,23,False,False
+2024-01-03,S01,SKU001,20,23,3,True,False
+2024-01-04,S01,SKU001,8,20,12,False,True

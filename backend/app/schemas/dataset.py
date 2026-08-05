@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 
 
 class StoreOut(BaseModel):
@@ -21,3 +21,20 @@ class DatasetReadiness(BaseModel):
     transaction_count: int
     is_ready: bool
     warnings: list[str] = []
+
+class UploadIssue(BaseModel):
+    where: str
+    message: str
+    severity: Literal["warning", "error"]
+
+
+class DatasetUploadResponse(BaseModel):
+    dataset_id: str
+    source_type: str = "upload"
+    days_covered: int
+    store_count: int
+    sku_count: int
+    supplier_count: int = 0
+    transaction_count: int
+    is_ready: bool
+    issues: list[UploadIssue] = []
