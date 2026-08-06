@@ -180,3 +180,47 @@ export function confirmDecisionRun(runId: string) {
 export function exportCsvUrl(runId: string) {
   return `${API_BASE}/decision-runs/${runId}/export.csv`;
 }
+
+export interface UploadIssue {
+  where: string;
+  message: string;
+  severity: "warning" | "error";
+}
+
+export interface DatasetUploadResponse {
+  dataset_id: string;
+  source_type: string;
+  days_covered: number;
+  store_count: number;
+  sku_count: number;
+  supplier_count: number;
+  transaction_count: number;
+  is_ready: boolean;
+  issues: UploadIssue[];
+}
+
+export async function uploadDataset(file: File): Promise<DatasetUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/datasets/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const message = extractErrorMessage(body) ?? `Upload gagal (${res.status})`;
+    throw new Error(message);
+  }
+  return res.json();
+}
+export interface StoreOption {
+  store_id: string;
+  store_name: string;
+  city?: string;
+}
+
+export function getDatasetStores(datasetId: string) {
+  return request<StoreOption[]>(`/datasets/${datasetId}/stores`);
+}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Wallet, Scale, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PLAN_ITEMS, POLICY_LABEL, STORES, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
+import { PLAN_ITEMS, POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
 import { EmptyState, GoldButton, Num, SectionTitle, SimDataBadge } from "@/components/restock/primitives";
 import { Switch } from "@/components/ui/switch";
@@ -27,7 +27,7 @@ const POLICIES: Array<{ id: PolicyStyle; icon: typeof Wallet; desc: string }> = 
 ];
 
 function AturKeputusan() {
-  const { dataset, setup, updateSetup, runPlan } = useRestock();
+  const { dataset, setup, updateSetup, runPlan, availableStores } = useRestock();
   const navigate = useNavigate();
   const [raw, setRaw] = useState(formatRupiah(setup.budget));
 
@@ -56,8 +56,8 @@ function AturKeputusan() {
               onChange={(e) => updateSetup({ storeId: e.target.value })}
               className="mt-1 h-10 w-full rounded-[6px] border border-border bg-background px-3 text-sm outline-none focus:border-accent-gold"
             >
-              {STORES.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
+              {availableStores.map((s) => (
+                <option key={s.store_id} value={s.store_id}>{s.store_name}</option>
               ))}
             </select>
           </label>
