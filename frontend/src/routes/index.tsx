@@ -42,12 +42,19 @@ function PilihData() {
         <div
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
-          onDrop={(e) => { e.preventDefault(); setDrag(false); chooseDataset("upload", e.dataTransfer.files[0]?.name ?? "data-toko.zip"); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDrag(false);
+            const file = e.dataTransfer.files[0];
+            if (file) chooseDataset("upload", file);
+          }}
           className={cn("rounded-[8px] border bg-card p-5", dataset?.kind === "upload" ? "border-accent-gold" : "border-border")}
         >
           <Upload className="h-6 w-6 text-accent-gold" />
           <h2 className="mt-3 font-display text-lg font-semibold">Unggah Data Toko</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Bundel ZIP atau CSV berisi transaksi, stok, dan supplier</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            CSV histori transaksi harian untuk toko dan produk yang sudah terdaftar di sistem
+          </p>
           <label
             className={cn(
               "mt-4 flex cursor-pointer flex-col items-center justify-center rounded-[6px] border border-dashed px-4 py-6 text-center text-xs transition-colors duration-150",
@@ -58,12 +65,29 @@ function PilihData() {
             Tarik file ke sini atau klik untuk memilih
             <input
               type="file"
-              accept=".zip,.csv"
+              accept=".csv"
               className="hidden"
-              onChange={(e) => chooseDataset("upload", e.target.files?.[0]?.name ?? "data-toko.zip")}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) chooseDataset("upload", file);
+              }}
             />
           </label>
-          <button type="button" className="mt-3 text-xs text-accent-gold underline underline-offset-2">
+          <button
+            type="button"
+            className="mt-3 text-xs text-accent-gold underline underline-offset-2"
+            onClick={() => {
+              const header = "date,store_id,sku_id,units_sold,stock_on_hand_start,stock_on_hand_end,stockout_flag,promo_flag";
+              const example = "2024-01-01,S01,SKU001,12,50,38,False,False";
+              const blob = new Blob([header + "\n" + example], { type: "text/csv" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "template_upload_restockiq.csv";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+          >
             <Download className="mr-1 inline h-3 w-3" />Unduh template
           </button>
         </div>

@@ -25,6 +25,7 @@ import {
   createDecisionRun,
   updateRecommendation as apiUpdateRecommendation,
   confirmDecisionRun,
+  uploadDataset,
   type ApiRecommendation,
 } from "./api";
 
@@ -65,7 +66,7 @@ interface Ctx {
   dataset: DatasetState | null;
   validation: ValidationPhase;
   validationStep: number;
-  chooseDataset: (kind: DatasetKind, fileName?: string) => void;
+  chooseDataset: (kind: DatasetKind, file?: File) => void;
   resetDataset: () => void;
 
   setup: SetupState;
@@ -183,7 +184,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     timers.current = [];
   };
 
-  const chooseDataset = useCallback((kind: DatasetKind, fileName?: string) => {
+    const chooseDataset = useCallback((kind: DatasetKind, file?: File) => {
     clearTimers();
     setValidation("running");
     setValidationStep(0);
@@ -198,16 +199,11 @@ export function RestockProvider({ children }: { children: ReactNode }) {
             kind: "demo",
             datasetId: res.dataset_id,
             summary: {
-              days: res.days_covered,
-              stores: res.store_count,
-              skus: res.sku_count,
-              suppliers: res.supplier_count,
-              rows: res.transaction_count,
+              days: res.days_covered, stores: res.store_count,
+              skus: res.sku_count, suppliers: res.supplier_count, rows: res.transaction_count,
             },
             issues: res.warnings.map((w) => ({
-              where: "Data demo",
-              message: w,
-              severity: "warning" as const,
+              where: "Data demo", message: w, severity: "warning" as const,
             })),
             hasFatal: !res.is_ready,
           });
@@ -220,25 +216,92 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Unggah data toko sendiri: backend belum menyediakan endpoint ini,
-    // jadi untuk sementara masih simulasi (lihat MVP Final bagian 3.3, stretch).
+    // kind === "upload"
+    if (!file) {
+      setValidation("idle");
+      return;
+    }
+
     VALIDATION_STEP_LABELS.forEach((_, i) => {
-      timers.current.push(window.setTimeout(() => setValidationStep(i), i * 650));
+      timers.current.push(window.setTimeout(() => setValidationStep(i), i * 400));
     });
-    timers.current.push(
-      window.setTimeout(() => {
+
+    uploadDataset(file)
+      .then((res) => {
         setDataset({
           kind: "upload",
-          datasetId: "upload-not-implemented",
-          ...(fileName ? { fileName } : {}),
-          summary: UPLOAD_SUMMARY,
-          issues: UPLOAD_ISSUES,
-          hasFatal: UPLOAD_ISSUES.some((i) => i.severity === "error"),
+          fileName: file.name,
+          datasetId: res.dataset_id,
+          summary: {
+            days: res.days_covered, stores: res.store_count,
+            skus: res.sku_count, suppliers: res.supplier_count, rows: res.transaction_count,
+          },
+          issues: res.issues,
+          hasFatal: !res.is_ready,
         });
         setValidation("done");
-      }, VALIDATION_STEP_LABELS.length * 650),
-    );
+      })
+      .catch((err) => {
+        console.error("Gagal upload data toko:", err);
+        setValidation("idle");
+      });
   }, []);
+  // const chooseDataset = useCallback((kind: DatasetKind, fileName?: string) => {
+  //   clearTimers();
+  //   setValidation("running");
+  //   setValidationStep(0);
+
+  //   if (kind === "demo") {
+  //     VALIDATION_STEP_LABELS.forEach((_, i) => {
+  //       timers.current.push(window.setTimeout(() => setValidationStep(i), i * 400));
+  //     });
+  //     getDemoDatasetReadiness()
+  //       .then((res) => {
+  //         setDataset({
+  //           kind: "demo",
+  //           datasetId: res.dataset_id,
+            // summary: {
+    //           days: res.days_covered,
+    //           stores: res.store_count,
+    //           skus: res.sku_count,
+    //           suppliers: res.supplier_count,
+    //           rows: res.transaction_count,
+    //         },
+    //         issues: res.warnings.map((w) => ({
+    //           where: "Data demo",
+    //           message: w,
+    //           severity: "warning" as const,
+    //         })),
+    //         hasFatal: !res.is_ready,
+    //       });
+    //       setValidation("done");
+    //     })
+    //     .catch((err) => {
+    //       console.error("Gagal memuat data demo:", err);
+    //       setValidation("idle");
+    //     });
+    //   return;
+    // }
+
+  //   // Unggah data toko sendiri: backend belum menyediakan endpoint ini,
+  //   // jadi untuk sementara masih simulasi (lihat MVP Final bagian 3.3, stretch).
+  //   VALIDATION_STEP_LABELS.forEach((_, i) => {
+  //     timers.current.push(window.setTimeout(() => setValidationStep(i), i * 650));
+  //   });
+  //   timers.current.push(
+  //     window.setTimeout(() => {
+  //       setDataset({
+  //         kind: "upload",
+  //         datasetId: "upload-not-implemented",
+  //         ...(fileName ? { fileName } : {}),
+  //         summary: UPLOAD_SUMMARY,
+  //         issues: UPLOAD_ISSUES,
+  //         hasFatal: UPLOAD_ISSUES.some((i) => i.severity === "error"),
+  //       });
+  //       setValidation("done");
+  //     }, VALIDATION_STEP_LABELS.length * 650),
+  //   );
+  // }, []);
 
   const resetDataset = useCallback(() => {
     clearTimers();
