@@ -215,3 +215,12 @@ export async function uploadDataset(file: File): Promise<DatasetUploadResponse> 
   }
   return res.json();
 }
+export interface StoreOption {
+  store_id: string;
+  store_name: string;
+  city?: string;
+}
+
+export function getDatasetStores(datasetId: string) {
+  return request<StoreOption[]>(`/datasets/${datasetId}/stores`);
+}
