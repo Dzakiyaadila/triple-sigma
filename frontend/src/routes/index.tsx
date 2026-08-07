@@ -27,7 +27,7 @@ function PilihData() {
       <SectionTitle title="Mulai dengan data toko" desc="Gunakan data simulasi atau unggah data toko kamu sendiri" />
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className={cn("relative rounded-[8px] border bg-card p-5", dataset?.kind === "demo" ? "border-accent-gold" : "border-border")}>
+        <div className={cn("relative rounded-[6px] border bg-card p-5", dataset?.kind === "demo" ? "border-accent-gold" : "border-border")}>
           <SimDataBadge className="absolute top-4 right-4" />
           <Store className="h-6 w-6 text-accent-gold" />
           <h2 className="mt-3 font-display text-lg font-semibold">Gunakan Data Demo</h2>
@@ -48,7 +48,7 @@ function PilihData() {
             const file = e.dataTransfer.files[0];
             if (file) chooseDataset("upload", file);
           }}
-          className={cn("rounded-[8px] border bg-card p-5", dataset?.kind === "upload" ? "border-accent-gold" : "border-border")}
+          className={cn("rounded-[6px] border bg-card p-5", dataset?.kind === "upload" ? "border-accent-gold" : "border-border")}
         >
           <Upload className="h-6 w-6 text-accent-gold" />
           <h2 className="mt-3 font-display text-lg font-semibold">Unggah Data Toko</h2>
@@ -94,9 +94,9 @@ function PilihData() {
       </div>
 
       {validation === "running" ? (
-        <div className="mt-6 rounded-[8px] border border-border bg-card p-5">
+        <div className="mt-6 rounded-[6px] border border-border bg-card p-5">
           <p className="text-sm">{VALIDATION_STEP_LABELS[validationStep]}</p>
-          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-[2px] bg-secondary">
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-[6px] bg-secondary">
             <div
               className="h-full bg-accent-gold transition-all duration-200"
               style={{ width: `${((validationStep + 1) / VALIDATION_STEP_LABELS.length) * 100}%` }}
@@ -106,7 +106,7 @@ function PilihData() {
       ) : null}
 
       {validation === "done" && dataset ? (
-        <div className="mt-6 rounded-[8px] border border-border bg-card p-5">
+        <div className="mt-6 rounded-[6px] border border-border bg-card p-5">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-lg font-semibold">Laporan Kesiapan Data</h2>
             {dataset.fileName ? <FlatBadge>{dataset.fileName}</FlatBadge> : <SimDataBadge />}

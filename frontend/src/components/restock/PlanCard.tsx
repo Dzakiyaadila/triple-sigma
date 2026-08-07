@@ -64,7 +64,7 @@ export function PlanCard({ item, editing, onEdit }: { item: PlanItem; editing: b
   return (
     <article
       className={cn(
-        "rounded-[8px] border bg-card transition-colors duration-150",
+        "rounded-[6px] border bg-card transition-colors duration-150",
         status === "disetujui"
           ? "border-safe/50"
           : status === "ditolak"
@@ -78,7 +78,7 @@ export function PlanCard({ item, editing, onEdit }: { item: PlanItem; editing: b
         className="w-full px-4 pt-4 text-left"
       >
         <div className="flex flex-wrap items-start gap-2">
-          <span className="num mt-0.5 flex h-6 w-6 items-center justify-center rounded-[4px] border border-border bg-muted text-[11px] font-medium">
+          <span className="num mt-0.5 flex h-6 w-6 items-center justify-center rounded-[6px] border border-border bg-muted text-[11px] font-medium">
             {item.priority_rank}
           </span>
           <div className="min-w-0 flex-1">

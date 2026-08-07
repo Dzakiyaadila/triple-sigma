@@ -47,7 +47,7 @@ function AturKeputusan() {
     <div className="mx-auto max-w-3xl">
       <SectionTitle title="Atur keputusan" desc="Parameter ini menentukan bagaimana rencana restock dihitung" />
 
-      <div className="space-y-5 rounded-[8px] border border-border bg-card p-5">
+      <div className="space-y-5 rounded-[6px] border border-border bg-card p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="text-muted-foreground">Pilih toko</span>
@@ -100,7 +100,7 @@ function AturKeputusan() {
         </div>
 
         <div>
-          <p className="text-sm text-muted-foreground">Gaya kebijakan</p>
+          <p className="text-sm text-muted-foreground">Prioritas restock</p>
           <div className="mt-2 grid gap-3 sm:grid-cols-3">
             {POLICIES.map((p) => {
               const active = setup.policy === p.id;
@@ -110,7 +110,7 @@ function AturKeputusan() {
                   type="button"
                   onClick={() => updateSetup({ policy: p.id })}
                   className={cn(
-                    "rounded-[8px] border p-4 text-left transition-colors duration-150",
+                    "rounded-[6px] border p-4 text-left transition-colors duration-150",
                     active ? "border-accent-gold bg-accent-gold-soft" : "border-border hover:bg-secondary/60",
                   )}
                 >
@@ -125,7 +125,7 @@ function AturKeputusan() {
 
         <div className="rounded-[6px] border border-border p-4">
           <label className="flex items-center justify-between text-sm">
-            Set target service level minimum
+            Tentukan target ketersediaan stok minimum
             <Switch
               checked={setup.serviceLevelOn}
               onCheckedChange={(v) => updateSetup({ serviceLevelOn: v })}
@@ -149,7 +149,7 @@ function AturKeputusan() {
 
         <div className="rounded-[6px] border border-border p-4">
           <p className="text-sm">Lindungi SKU tertentu <span className="text-xs text-muted-foreground">(opsional)</span></p>
-          <p className="mt-1 text-xs text-muted-foreground">SKU ini selalu masuk rencana meski secara ekonomi kurang optimal.</p>
+          <p className="mt-1 text-xs text-muted-foreground">SKU ini akan selalu direkomendasikan, meski secara finansial belum tentu paling menguntungkan.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {PLAN_ITEMS.slice(0, 10).map((it) => {
               const active = setup.protectedSkus.includes(it.sku_id);
@@ -165,7 +165,7 @@ function AturKeputusan() {
                     })
                   }
                   className={cn(
-                    "rounded-[4px] border px-2 py-1 text-xs transition-colors duration-150",
+                    "rounded-[6px] border px-2 py-1 text-xs transition-colors duration-150",
                     active ? "border-accent-gold bg-accent-gold-soft text-accent-gold" : "border-border text-muted-foreground hover:bg-secondary",
                   )}
                 >
