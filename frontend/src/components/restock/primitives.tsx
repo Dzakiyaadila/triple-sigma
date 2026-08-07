@@ -22,7 +22,7 @@ export function RiskBadge({ pct, className }: { pct: number; className?: string 
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-[4px] border px-2 py-0.5 text-[11px] font-medium tracking-wide uppercase",
+        "inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[11px] font-medium",
         riskStyles[level],
         className,
       )}
@@ -48,7 +48,7 @@ export function ConfidenceBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-[4px] border px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center rounded-[6px] border px-2 py-0.5 text-[11px] font-medium",
         confStyles[level],
         className,
       )}
@@ -79,7 +79,7 @@ export function FlatBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-[4px] border px-2 py-0.5 text-[11px] font-medium",
+        "inline-flex items-center gap-1 rounded-[6px] border px-2 py-0.5 text-[11px] font-medium",
         tones[tone],
         className,
       )}
@@ -89,10 +89,18 @@ export function FlatBadge({
   );
 }
 
+// export function SimDataBadge({ className }: { className?: string }) {
+//   return (
+//     <FlatBadge tone="muted" className={cn("tracking-wide uppercase", className)}>
+//       Data Simulasi Terkendali
+//     </FlatBadge>
+//   );
+// }
+
 export function SimDataBadge({ className }: { className?: string }) {
   return (
-    <FlatBadge tone="muted" className={cn("tracking-wide uppercase", className)}>
-      Data Simulasi Terkendali
+    <FlatBadge tone="muted" className={className}>
+      Data simulasi terkendali
     </FlatBadge>
   );
 }
@@ -110,7 +118,7 @@ export function Meter({
 }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className={cn("h-1.5 w-full overflow-hidden rounded-[2px] bg-secondary", className)}>
+    <div className={cn("h-1.5 w-full overflow-hidden rounded-[6px] bg-secondary", className)}>
       <div
         className={cn("h-full transition-all duration-200", over ? "bg-danger" : "bg-accent-gold")}
         style={{ width: `${pct}%` }}
@@ -136,7 +144,7 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-[8px] border border-border bg-card p-5", className)}>
+    <div className={cn("rounded-[6px] border border-border bg-card p-5", className)}>
       {children}
     </div>
   );
@@ -152,7 +160,7 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[8px] border border-dashed border-border bg-card px-6 py-12 text-center">
+    <div className="rounded-[6px] border border-dashed border-border bg-card px-6 py-12 text-center">
       <h3 className="font-display text-base font-semibold">{title}</h3>
       <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{desc}</p>
       {action ? <div className="mt-4 flex justify-center">{action}</div> : null}

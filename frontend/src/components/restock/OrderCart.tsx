@@ -8,7 +8,7 @@ export function OrderCart() {
   const sisa = setup.budget - cartTotal;
 
   return (
-    <aside className="sticky top-4 rounded-[8px] border border-border bg-card p-4">
+    <aside className="sticky top-4 rounded-[6px] border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <h2 className="font-display text-base font-semibold">Keranjang pesanan</h2>
         <Num className="text-xs text-muted-foreground">{cart.length} SKU</Num>
@@ -41,7 +41,7 @@ export function OrderCart() {
           <Num className={overBudget ? "text-danger" : ""}>{formatRupiah(sisa)}</Num>
         </div>
         {overBudget ? (
-          <p className="rounded-[4px] border border-danger/40 bg-danger-soft px-2 py-1 text-xs text-danger">
+          <p className="rounded-[6px] border border-danger/40 bg-danger-soft px-2 py-1 text-xs text-danger">
             Total melebihi modal tersedia. Kurangi jumlah atau tolak sebagian item.
           </p>
         ) : null}

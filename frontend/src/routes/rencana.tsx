@@ -88,31 +88,31 @@ function Rencana() {
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-[8px] border border-border bg-card p-4">
+              <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">SKU direkomendasikan</p>
                 <Num className="mt-1 block text-xl font-semibold">{items.length}</Num>
               </div>
-              <div className="rounded-[8px] border border-border bg-card p-4">
+              <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">Modal terpakai / tersedia</p>
                 <p className="mt-1 text-sm"><Num className="font-semibold">{formatRupiah(used)}</Num> <span className="text-muted-foreground">/</span> <Num>{formatRupiah(setup.budget)}</Num></p>
                 <Meter className="mt-2" value={used} max={setup.budget} over={used > setup.budget} />
               </div>
-              <div className="rounded-[8px] border border-border bg-card p-4">
+              <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">Kontribusi NOV bersih</p>
                 <Num className="mt-1 block text-xl font-semibold text-safe">{formatRupiah(nov)}</Num>
               </div>
-              <div className="rounded-[8px] border border-border bg-card p-4">
+              <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">Perkiraan fill rate</p>
                 <Num className="mt-1 block text-xl font-semibold">{formatPct(fillRate, 1)}</Num>
               </div>
-              <div className="rounded-[8px] border border-border bg-card p-4">
+              <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">SKU kepercayaan rendah</p>
                 <div className="mt-1"><FlatBadge tone="warn"><Num>{lowConf}</Num> SKU</FlatBadge></div>
               </div>
             </div>
 
             {technical ? (
-              <div className="mt-4 rounded-[8px] border border-info/40 bg-info-soft/50 p-4">
+              <div className="mt-4 rounded-[6px] border border-info/40 bg-info-soft/50 p-4">
                 <div className="flex items-center gap-2">
                   <h2 className="font-display text-sm font-semibold">Panel evaluasi model</h2>
                   <FlatBadge tone="info">Teknis</FlatBadge>
@@ -136,7 +136,7 @@ function Rencana() {
               </p>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[8px] border border-border bg-card p-3">
+            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[6px] border border-border bg-card p-3">
               <div className="relative min-w-40 flex-1">
                 <Search className="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-muted-foreground" />
                 <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cari SKU" aria-label="Cari SKU" className="h-9 w-full rounded-[6px] border border-border bg-background pl-8 text-sm outline-none focus:border-accent-gold" />

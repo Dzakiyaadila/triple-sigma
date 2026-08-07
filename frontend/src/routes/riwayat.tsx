@@ -27,7 +27,7 @@ function Riwayat() {
       {runs.length === 0 ? (
         <EmptyState title="Belum ada riwayat" desc="Selesaikan satu run restock untuk melihat catatannya di sini." />
       ) : (
-        <div className="overflow-hidden rounded-[8px] border border-border bg-card">
+        <div className="overflow-hidden rounded-[6px] border border-border bg-card">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted-foreground">
@@ -54,7 +54,7 @@ function Riwayat() {
       )}
 
       {open ? (
-        <div className="mt-6 rounded-[8px] border border-border bg-card p-5">
+        <div className="mt-6 rounded-[6px] border border-border bg-card p-5">
           <h2 className="font-display text-lg font-semibold">Ringkasan run {open.date} · {open.storeName}</h2>
           <p className="mt-1 text-xs text-muted-foreground">Tampilan hanya-baca.</p>
           <ul className="mt-3 space-y-1 text-sm">

@@ -47,7 +47,7 @@ function Konfirmasi() {
     <div className="mx-auto max-w-3xl">
       <SectionTitle title="Konfirmasi & ekspor" desc="Periksa daftar akhir sebelum pesanan dicatat" />
 
-      <div className="rounded-[8px] border border-border bg-card">
+      <div className="rounded-[6px] border border-border bg-card">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-xs text-muted-foreground">
