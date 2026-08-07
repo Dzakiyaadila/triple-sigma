@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Wallet, Scale, Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PLAN_ITEMS, POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
-import { useRestock } from "@/lib/restock-store";
+import { latestSupportedDecisionDate, useRestock } from "@/lib/restock-store";
 import { EmptyState, GoldButton, Num, SectionTitle, SimDataBadge } from "@/components/restock/primitives";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -67,6 +67,14 @@ function AturKeputusan() {
             <input
               type="date"
               value={setup.date}
+              min={dataset.minDate ?? undefined}
+              max={
+                latestSupportedDecisionDate(
+                  dataset.maxDate,
+                  dataset.calendarMaxDate,
+                  setup.horizon,
+                ) ?? undefined
+              }
               onChange={(e) => updateSetup({ date: e.target.value })}
               className="num mt-1 h-10 w-full rounded-[6px] border border-border bg-background px-3 text-sm outline-none focus:border-accent-gold"
             />

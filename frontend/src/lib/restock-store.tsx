@@ -9,11 +9,7 @@ import {
 } from "react";
 import {
   DATA_DATE_ISO,
-  DEMO_ISSUES,
-  DEMO_SUMMARY,
   STORES,
-  UPLOAD_ISSUES,
-  UPLOAD_SUMMARY,
   unitCost,
   type ItemStatus,
   type PlanItem,
@@ -29,6 +25,7 @@ import {
   getDatasetStores,
   type ApiRecommendation,
   type StoreOption,
+  type UploadIssue,
 } from "./api";
 
 export type DatasetKind = "demo" | "upload";
@@ -36,12 +33,25 @@ export type ValidationPhase = "idle" | "running" | "done";
 export type JobPhase = "idle" | "running" | "done" | "error";
 export type JobError = "solver_timeout" | null;
 
+export interface DatasetSummary {
+  days: number;
+  stores: number;
+  skus: number;
+  suppliers: number;
+  rows: number;
+}
+
 export interface DatasetState {
   kind: DatasetKind;
   fileName?: string;
   datasetId: string;
-  summary: typeof DEMO_SUMMARY;
-  issues: typeof DEMO_ISSUES;
+  dataHash?: string;
+  minDate: string | null;
+  maxDate: string | null;
+  calendarMinDate: string | null;
+  calendarMaxDate: string | null;
+  summary: DatasetSummary;
+  issues: UploadIssue[];
   hasFatal: boolean;
 }
 
@@ -116,6 +126,26 @@ export const VALIDATION_STEP_LABELS = [
   "Menyiapkan ringkasan...",
 ];
 
+function shiftIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  if (!year || !month || !day) return isoDate;
+
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export function latestSupportedDecisionDate(
+  datasetMaxDate: string | null,
+  calendarMaxDate: string | null,
+  horizonDays: number,
+): string | null {
+  if (!datasetMaxDate || !calendarMaxDate) return null;
+
+  const calendarBound = shiftIsoDate(calendarMaxDate, -horizonDays);
+  return datasetMaxDate < calendarBound ? datasetMaxDate : calendarBound;
+}
+
 const RestockCtx = createContext<Ctx | null>(null);
 
 function toPlanItem(r: ApiRecommendation): PlanItem {
@@ -162,6 +192,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
   const [validation, setValidation] = useState<ValidationPhase>("idle");
   const [validationStep, setValidationStep] = useState(0);
   const timers = useRef<number[]>([]);
+  const validationRequestId = useRef(0);
 
   const [setup, setSetup] = useState<SetupState>({
     storeId: STORES[0]!.id,
@@ -189,96 +220,187 @@ export function RestockProvider({ children }: { children: ReactNode }) {
   };
   const chooseDataset = useCallback((kind: DatasetKind, file?: File) => {
     clearTimers();
+    const requestId = ++validationRequestId.current;
     setValidation("running");
     setValidationStep(0);
+    setAvailableStores([]);
+
+    VALIDATION_STEP_LABELS.forEach((_, index) => {
+      timers.current.push(
+        window.setTimeout(() => {
+          if (validationRequestId.current === requestId) {
+            setValidationStep(index);
+          }
+        }, index * 400),
+      );
+    });
+
+    const applyStores = (stores: StoreOption[], datasetState: DatasetState) => {
+      if (validationRequestId.current !== requestId) return;
+
+      setAvailableStores(stores);
+      setSetup((current) => {
+        const latestDate = latestSupportedDecisionDate(
+          datasetState.maxDate,
+          datasetState.calendarMaxDate,
+          current.horizon,
+        );
+
+        return {
+          ...current,
+          storeId: stores.some((store) => store.store_id === current.storeId)
+            ? current.storeId
+            : (stores[0]?.store_id ?? current.storeId),
+          date: latestDate ?? current.date,
+        };
+      });
+    };
+
+    const showFailure = (message: string, fileName?: string) => {
+      if (validationRequestId.current !== requestId) return;
+
+      setDataset({
+        kind,
+        ...(fileName ? { fileName } : {}),
+        datasetId: "",
+        minDate: null,
+        maxDate: null,
+        calendarMinDate: null,
+        calendarMaxDate: null,
+        summary: { days: 0, stores: 0, skus: 0, suppliers: 0, rows: 0 },
+        issues: [
+          {
+            where: fileName ?? "Data demo",
+            message,
+            severity: "error",
+          },
+        ],
+        hasFatal: true,
+      });
+      setValidation("done");
+    };
 
     if (kind === "demo") {
-      VALIDATION_STEP_LABELS.forEach((_, i) => {
-        timers.current.push(window.setTimeout(() => setValidationStep(i), i * 400));
-      });
       getDemoDatasetReadiness()
-        .then((res) => {
-          setDataset({
+        .then(async (res) => {
+          if (validationRequestId.current !== requestId) return;
+
+          const nextDataset: DatasetState = {
             kind: "demo",
             datasetId: res.dataset_id,
+            minDate: res.min_date,
+            maxDate: res.max_date,
+            calendarMinDate: res.calendar_min_date,
+            calendarMaxDate: res.calendar_max_date,
             summary: {
-              days: res.days_covered, stores: res.store_count,
-              skus: res.sku_count, suppliers: res.supplier_count, rows: res.transaction_count,
+              days: res.days_covered,
+              stores: res.store_count,
+              skus: res.sku_count,
+              suppliers: res.supplier_count,
+              rows: res.transaction_count,
             },
-            issues: res.warnings.map((w) => ({
-              where: "Data demo", message: w, severity: "warning" as const,
+            issues: res.warnings.map((warning) => ({
+              where: "Data demo",
+              message: warning,
+              severity: "warning" as const,
             })),
             hasFatal: !res.is_ready,
-          });
+          };
+
+          setDataset(nextDataset);
           setValidation("done");
-          return getDatasetStores(res.dataset_id);
+
+          if (!res.is_ready) return;
+          const stores = await getDatasetStores(res.dataset_id);
+          applyStores(stores, nextDataset);
         })
-        .then((stores) => {
-          setAvailableStores(stores);
-          setSetup((s) => ({
-            ...s,
-            storeId: stores.some((st) => st.store_id === s.storeId) ? s.storeId : (stores[0]?.store_id ?? s.storeId),
-          }));
-        })
-        .catch((err) => {
-          console.error("Gagal memuat data demo:", err);
-          setValidation("idle");
+        .catch((error: unknown) => {
+          const message = error instanceof Error
+            ? error.message
+            : "Gagal memuat data demo.";
+          showFailure(message);
         });
-      return; // <-- PENTING: hentikan di sini, jangan lanjut ke bawah
+      return;
     }
 
-    // kind === "upload"
     if (!file) {
       setValidation("idle");
       return;
     }
 
-    VALIDATION_STEP_LABELS.forEach((_, i) => {
-      timers.current.push(window.setTimeout(() => setValidationStep(i), i * 400));
-    });
-
     uploadDataset(file)
-      .then((res) => {
-        setDataset({
+      .then(async (res) => {
+        if (validationRequestId.current !== requestId) return;
+
+        const nextDataset: DatasetState = {
           kind: "upload",
           fileName: file.name,
           datasetId: res.dataset_id,
+          ...(res.data_hash ? { dataHash: res.data_hash } : {}),
+          minDate: res.min_date,
+          maxDate: res.max_date,
+          calendarMinDate: res.calendar_min_date,
+          calendarMaxDate: res.calendar_max_date,
           summary: {
-            days: res.days_covered, stores: res.store_count,
-            skus: res.sku_count, suppliers: res.supplier_count, rows: res.transaction_count,
+            days: res.days_covered,
+            stores: res.store_count,
+            skus: res.sku_count,
+            suppliers: res.supplier_count,
+            rows: res.transaction_count,
           },
           issues: res.issues,
           hasFatal: !res.is_ready,
-        });
+        };
+
+        setDataset(nextDataset);
         setValidation("done");
-        return getDatasetStores(res.dataset_id); // <-- INI YANG KELEWAT
+
+        // Structured validation failures intentionally return HTTP 200 so the
+        // report stays visible. There is no dataset identity/store lookup yet.
+        if (!res.is_ready || !res.dataset_id) return;
+
+        const stores = await getDatasetStores(res.dataset_id);
+        applyStores(stores, nextDataset);
       })
-      .then((stores) => {
-        setAvailableStores(stores);
-        setSetup((s) => ({
-          ...s,
-          storeId: stores.some((st) => st.store_id === s.storeId) ? s.storeId : (stores[0]?.store_id ?? s.storeId),
-        }));
-      })
-      .catch((err) => {
-        console.error("Gagal upload data toko:", err);
-        setValidation("idle");
+      .catch((error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : "Upload gagal diproses.";
+        showFailure(message, file.name);
       });
   }, []);
 
   const resetDataset = useCallback(() => {
     clearTimers();
+    validationRequestId.current += 1;
     setDataset(null);
+    setAvailableStores([]);
     setValidation("idle");
     setValidationStep(0);
   }, []);
 
   const updateSetup = useCallback((patch: Partial<SetupState>) => {
-    setSetup((s) => ({ ...s, ...patch }));
-  }, []);
+    setSetup((current) => {
+      const next = { ...current, ...patch };
+      const latestDate = latestSupportedDecisionDate(
+        dataset?.maxDate ?? null,
+        dataset?.calendarMaxDate ?? null,
+        next.horizon,
+      );
+
+      if (latestDate && next.date > latestDate) {
+        next.date = latestDate;
+      }
+      if (dataset?.minDate && next.date < dataset.minDate) {
+        next.date = dataset.minDate;
+      }
+
+      return next;
+    });
+  }, [dataset]);
 
   const runPlan = useCallback(() => {
-    if (!dataset) return;
+    if (!dataset || dataset.hasFatal || !dataset.datasetId || !setup.storeId) return;
     clearTimers();
     setJobError(null);
     setJob("running");

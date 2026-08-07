@@ -72,6 +72,10 @@ export interface DatasetReadinessResponse {
   sku_count: number;
   supplier_count: number;
   transaction_count: number;
+  min_date: string | null;
+  max_date: string | null;
+  calendar_min_date: string | null;
+  calendar_max_date: string | null;
   is_ready: boolean;
   warnings: string[];
 }
@@ -190,11 +194,16 @@ export interface UploadIssue {
 export interface DatasetUploadResponse {
   dataset_id: string;
   source_type: string;
+  data_hash: string | null;
   days_covered: number;
   store_count: number;
   sku_count: number;
   supplier_count: number;
   transaction_count: number;
+  min_date: string | null;
+  max_date: string | null;
+  calendar_min_date: string | null;
+  calendar_max_date: string | null;
   is_ready: boolean;
   issues: UploadIssue[];
 }
