@@ -10,8 +10,11 @@ from datetime import date, timedelta
 
 def generate_restock_plan(products: list[dict], store_id: str, decision_date: str,
                            budget_rp: float, policy_preset: str = "seimbang",
-                           horizon_days: int = 7) -> dict:
+                           horizon_days: int = 7,
+                           protected_sku_ids: list[str] | None = None,
+                           min_fill_rate: float | None = None) -> dict:
     rng = random.Random(f"{store_id}-{decision_date}-{budget_rp}")
+    protected_set = set(protected_sku_ids or [])
 
     candidates = []
     for p in products:
@@ -41,7 +44,12 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
             "supplier_p90_lead_time_days": rng.randint(2, 7),
         })
 
-    candidates.sort(key=lambda c: c["stockout_risk_before"] * c["lmar_before"], reverse=True)
+    # SKU yang dilindungi dapat prioritas alokasi budget paling awal,
+    # sisanya diurutkan seperti biasa (risiko x LMAR, makin tinggi makin prioritas).
+    protected_candidates = [c for c in candidates if c["sku_id"] in protected_set]
+    other_candidates = [c for c in candidates if c["sku_id"] not in protected_set]
+    other_candidates.sort(key=lambda c: c["stockout_risk_before"] * c["lmar_before"], reverse=True)
+    candidates = protected_candidates + other_candidates
 
     recommendations = []
     running_cost = 0.0
@@ -66,6 +74,8 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
         if c["stockout_risk_before"] > 0.3:
             reason_codes.append("risiko_stockout_tinggi")
         reason_codes.append("supplier_andal" if c["supplier_on_time_probability"] > 0.85 else "supplier_kurang_andal")
+        if c["sku_id"] in protected_set:
+            reason_codes.append("sku_dilindungi")
 
         start = date.fromisoformat(decision_date)
         daily_series = [
@@ -79,6 +89,8 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
         ]
 
         nov = (c["lmar_before"] - lmar_after) - (wcar_after - c["wcar_before"]) * 0.1
+
+        item_warnings = [] if confidence != "rendah" else ["Data historis SKU ini terbatas"]
 
         recommendations.append({
             "sku_id": c["sku_id"], "priority_rank": rank, "recommended_qty": qty,
@@ -98,7 +110,7 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
             "supplier_p90_lead_time_days": c["supplier_p90_lead_time_days"],
             "expected_nov_contribution_rp": nov,
             "confidence": confidence, "reason_codes": reason_codes,
-            "warnings": [] if confidence != "rendah" else ["Data historis SKU ini terbatas"],
+            "warnings": item_warnings,
             "status": "belum_diputuskan",
         })
 
@@ -106,6 +118,13 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
     total_wcar = sum(r["incremental_wcar_added_rp"] for r in recommendations)
     total_nov = sum(r["expected_nov_contribution_rp"] for r in recommendations)
     fill_rate = round(sum(1 for r in recommendations if r["recommended_qty"] > 0) / max(len(recommendations), 1), 2)
+
+    plan_warnings = []
+    if min_fill_rate is not None and fill_rate < min_fill_rate:
+        plan_warnings.append(
+            f"Fill rate hasil optimisasi ({round(fill_rate * 100)}%) belum mencapai target "
+            f"minimum ({round(min_fill_rate * 100)}%). Pertimbangkan menambah modal restock."
+        )
 
     return {
         "run_id": f"run_{uuid.uuid4().hex[:12]}",
@@ -115,7 +134,7 @@ def generate_restock_plan(products: list[dict], store_id: str, decision_date: st
         "estimated_lmar_avoided_rp": total_lmar,
         "estimated_wcar_added_rp": total_wcar,
         "estimated_fill_rate": fill_rate,
-        "data_quality": "baik (data simulasi)", "warnings": [],
+        "data_quality": "baik (data simulasi)", "warnings": plan_warnings,
         "runtime_ms": rng.randint(300, 900),
         "recommendations": recommendations,
     }

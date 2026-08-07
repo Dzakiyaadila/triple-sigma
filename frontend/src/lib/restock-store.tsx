@@ -294,6 +294,8 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       budget_rp: setup.budget,
       horizon_days: setup.horizon,
       policy_preset: setup.policy,
+      min_fill_rate: setup.serviceLevelOn ? setup.serviceLevel / 100 : null,
+      protected_sku_ids: setup.protectedSkus,
     })
       .then((res) => {
         setRunId(res.run_id);
@@ -378,7 +380,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
   const overBudget = cartTotal > setup.budget;
 
   const confirmOrder = useCallback(() => {
-    const store = STORES.find((s) => s.id === setup.storeId)!;
+    const store = availableStores.find((s) => s.store_id === setup.storeId);
 
     if (runId) {
       confirmDecisionRun(runId).catch((err) =>

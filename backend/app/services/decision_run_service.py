@@ -8,7 +8,9 @@ from app.core.constants import DEMO_DATASET_ID
 
 def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: float,
                   policy_preset: str = "seimbang", horizon_days: int = 7,
-                  dataset_id: str | None = None) -> dict:
+                  dataset_id: str | None = None,
+                  min_fill_rate: float | None = None,
+                  protected_sku_ids: list[str] | None = None) -> dict:
     store = db.get(Store, store_id)
     if not store:
         raise ValueError(f"Toko {store_id} tidak ditemukan")
@@ -40,6 +42,7 @@ def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: floa
     plan = generate_restock_plan(
         products=product_dicts, store_id=store_id, decision_date=decision_date,
         budget_rp=budget_rp, policy_preset=policy_preset, horizon_days=horizon_days,
+        protected_sku_ids=protected_sku_ids, min_fill_rate=min_fill_rate,
     )
 
     for r in plan["recommendations"]:

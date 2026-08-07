@@ -149,7 +149,9 @@ export interface CreateDecisionRunPayload {
   decision_date: string;
   budget_rp: number;
   horizon_days: number;
-  policy_preset: PolicyPreset;
+  policy_preset: string;
+  min_fill_rate?: number | null;
+  protected_sku_ids?: string[];
 }
 
 export function createDecisionRun(payload: CreateDecisionRunPayload) {
