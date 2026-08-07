@@ -226,3 +226,15 @@ export interface StoreOption {
 export function getDatasetStores(datasetId: string) {
   return request<StoreOption[]>(`/datasets/${datasetId}/stores`);
 }
+
+export interface SkuOption {
+  sku_id: string;
+  product_name: string;
+  category: string;
+}
+
+export function getDatasetSkus(datasetId: string, storeId: string) {
+  return request<SkuOption[]>(
+    `/datasets/${datasetId}/skus?store_id=${encodeURIComponent(storeId)}`,
+  );
+}

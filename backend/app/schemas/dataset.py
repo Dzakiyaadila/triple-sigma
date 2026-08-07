@@ -38,3 +38,11 @@ class DatasetUploadResponse(BaseModel):
     transaction_count: int
     is_ready: bool
     issues: list[UploadIssue] = []
+    
+class SkuOption(BaseModel):
+    sku_id: str
+    product_name: str
+    category: str
+
+    class Config:
+        from_attributes = True
