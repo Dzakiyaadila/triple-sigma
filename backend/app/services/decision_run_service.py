@@ -1,21 +1,39 @@
 from datetime import datetime, timezone, date
 from sqlalchemy.orm import Session
-from sqlalchemy import select
-from app.db.models import Store, Product, Supplier, DecisionRun, Recommendation
+from sqlalchemy import select, func
+from app.db.models import Store, Product, Supplier, DailySales, DecisionRun, Recommendation
 from app.ml.restock_plan import generate_restock_plan
 from app.services.reasoning import generate_reasoning
-
+from app.core.constants import DEMO_DATASET_ID
 
 def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: float,
-                  policy_preset: str = "seimbang", horizon_days: int = 7) -> dict:
+                  policy_preset: str = "seimbang", horizon_days: int = 7,
+                  dataset_id: str | None = None) -> dict:
     store = db.get(Store, store_id)
     if not store:
         raise ValueError(f"Toko {store_id} tidak ditemukan")
 
-    products = db.scalars(select(Product)).all()
+    if dataset_id in (None, DEMO_DATASET_ID):
+        dataset_filter = DailySales.dataset_id.is_(None)
+    else:
+        dataset_filter = DailySales.dataset_id == dataset_id
+
+    sku_ids_query = select(func.distinct(DailySales.sku_id)).where(
+        DailySales.store_id == store_id, dataset_filter,
+    )
+    scoped_sku_ids = {row[0] for row in db.execute(sku_ids_query)}
+    if not scoped_sku_ids:
+        raise ValueError(
+            f"Tidak ada data transaksi untuk toko {store_id} pada dataset ini"
+        )
+
+    products = db.scalars(
+        select(Product).where(Product.sku_id.in_(scoped_sku_ids))
+    ).all()
     product_dicts = [
         {"sku_id": p.sku_id, "unit_cost_rp": p.unit_cost_rp} for p in products
     ]
+
     product_by_id = {p.sku_id: p for p in products}
     suppliers = {s.supplier_id: s for s in db.scalars(select(Supplier)).all()}
 

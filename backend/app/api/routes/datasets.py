@@ -8,10 +8,9 @@ from fastapi import UploadFile, File
 from app.schemas.dataset import DatasetUploadResponse
 from app.services.dataset_upload_service import process_sales_upload
 from app.schemas.dataset import StoreOut
+from app.core.constants import DEMO_DATASET_ID
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-DEMO_DATASET_ID = "demo-retail-v1"
 
 
 @router.get("/demo/readiness", response_model=DatasetReadiness)
