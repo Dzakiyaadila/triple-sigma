@@ -66,7 +66,7 @@ export function FlatBadge({
 }: {
   children: React.ReactNode;
   tone?: "muted" | "gold" | "safe" | "warn" | "danger" | "info";
-  className?: string;
+  className?: string | undefined;
 }) {
   const tones = {
     muted: "border-border bg-muted text-muted-foreground",
