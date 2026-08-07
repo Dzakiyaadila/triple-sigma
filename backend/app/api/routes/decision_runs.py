@@ -13,7 +13,8 @@ from app.services.plan_cache import plans_cache
 def create_decision_run(payload: DecisionRunRequest, db: Session = Depends(get_db)):
     try:
         plan = run_decision(
-            db=db, store_id=payload.store_id, decision_date=payload.decision_date,
+            db=db, dataset_id=payload.dataset_id, store_id=payload.store_id,
+            decision_date=payload.decision_date,
             budget_rp=payload.budget_rp, policy_preset=payload.policy_preset,
             horizon_days=payload.horizon_days,
         )

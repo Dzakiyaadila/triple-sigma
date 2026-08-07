@@ -1,26 +1,45 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from sqlalchemy import func, select
 from app.db.session import get_db
-from app.db.models import Store, Product, Supplier, DailySales
+from app.db.models import DailySales, Product, Store
 from app.schemas.dataset import DatasetReadiness
-from fastapi import UploadFile, File
 from app.schemas.dataset import DatasetUploadResponse
 from app.services.dataset_upload_service import process_sales_upload
+from app.services.dataset_scope import DEMO_DATASET_ID, dataset_filter
 from app.schemas.dataset import StoreOut
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
-DEMO_DATASET_ID = "demo-retail-v1"
 
 
 @router.get("/demo/readiness", response_model=DatasetReadiness)
 def get_demo_readiness(db: Session = Depends(get_db)):
-    store_count = db.scalar(select(func.count()).select_from(Store))
-    sku_count = db.scalar(select(func.count()).select_from(Product))
-    supplier_count = db.scalar(select(func.count()).select_from(Supplier))
-    transaction_count = db.scalar(select(func.count()).select_from(DailySales))
-    days_covered = db.scalar(select(func.count(func.distinct(DailySales.date))))
+    demo_filter = dataset_filter(DailySales.dataset_id, DEMO_DATASET_ID)
+
+    store_count = db.scalar(
+        select(func.count(func.distinct(DailySales.store_id)))
+        .where(demo_filter)
+    )
+    sku_count = db.scalar(
+        select(func.count(func.distinct(DailySales.sku_id)))
+        .where(demo_filter)
+    )
+    supplier_count = db.scalar(
+        select(func.count(func.distinct(Product.supplier_id)))
+        .select_from(DailySales)
+        .join(Product, Product.sku_id == DailySales.sku_id)
+        .where(demo_filter)
+    )
+    transaction_count = db.scalar(
+        select(func.count())
+        .select_from(DailySales)
+        .where(demo_filter)
+    )
+    days_covered = db.scalar(
+        select(func.count(func.distinct(DailySales.date)))
+        .where(demo_filter)
+    )
 
     return DatasetReadiness(
         dataset_id=DEMO_DATASET_ID,
@@ -43,12 +62,11 @@ async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get
     
 @router.get("/{dataset_id}/stores", response_model=list[StoreOut])
 def get_dataset_stores(dataset_id: str, db: Session = Depends(get_db)):
-    # Data demo di-seed dengan dataset_id NULL (bukan disimpan sebagai "demo-retail-v1"
-    # secara literal), jadi perlu ditangani khusus.
-    if dataset_id == DEMO_DATASET_ID:
-        store_ids_query = select(func.distinct(DailySales.store_id)).where(DailySales.dataset_id.is_(None))
-    else:
-        store_ids_query = select(func.distinct(DailySales.store_id)).where(DailySales.dataset_id == dataset_id)
+    store_ids_query = select(
+        func.distinct(DailySales.store_id)
+    ).where(
+        dataset_filter(DailySales.dataset_id, dataset_id)
+    )
 
     store_ids = {row[0] for row in db.execute(store_ids_query)}
     if not store_ids:

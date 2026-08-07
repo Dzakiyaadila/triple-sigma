@@ -99,6 +99,7 @@ class CalendarRow(StrictFrozenModel):
 
 
 class RetailSnapshot(StrictFrozenModel):
+    dataset_id: str
     store_id: str
     decision_date: date
     lookback_start_date: date
