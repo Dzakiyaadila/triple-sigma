@@ -57,7 +57,7 @@ function WizardProgress({ path }: { path: string }) {
               >
                 <span
                   className={cn(
-                    "num flex h-6 w-6 shrink-0 items-center justify-center rounded-[4px] border text-[11px] font-medium",
+                    "num flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border text-[11px] font-medium",
                     active
                       ? "border-accent-gold bg-accent-gold text-primary-foreground"
                       : done
@@ -100,7 +100,7 @@ function TopBar() {
         Asisten keputusan restock
       </span>
       <div className="ml-auto flex items-center gap-3">
-        <span className="hidden rounded-[4px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
+        <span className="hidden rounded-[6px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
           Data per <span className="num">{DATA_DATE}</span>
         </span>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -146,7 +146,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <n.icon className="h-4 w-4" />
                     {n.label}
                     {"badge" in n && n.badge ? (
-                      <span className="num ml-auto rounded-[4px] border border-info/40 bg-info-soft px-1.5 py-0.5 text-[10px] font-medium text-info">
+                      <span className="num ml-auto rounded-[6px] border border-info/40 bg-info-soft px-1.5 py-0.5 text-[10px] font-medium text-info">
                         {n.badge}
                       </span>
                     ) : null}

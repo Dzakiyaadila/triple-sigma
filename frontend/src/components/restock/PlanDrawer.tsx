@@ -29,7 +29,7 @@ export function PlanDrawer() {
             type="button"
             onClick={() => setOpenSku(null)}
             aria-label="Tutup detail"
-            className="mt-1 rounded-[4px] border border-border p-1 text-muted-foreground transition-colors duration-150 hover:text-foreground"
+            className="mt-1 rounded-[6px] border border-border p-1 text-muted-foreground transition-colors duration-150 hover:text-foreground"
           >
             <X className="h-4 w-4" />
           </button>
@@ -66,7 +66,7 @@ export function PlanDrawer() {
           <section>
             <h3 className="mb-2 text-sm font-medium">Posisi inventori</h3>
             <div className="rounded-[6px] border border-border p-4">
-              <div className="flex h-3 w-full overflow-hidden rounded-[2px] bg-secondary">
+              <div className="flex h-3 w-full overflow-hidden rounded-[6px] bg-secondary">
                 <div className="bg-safe" style={{ width: `${(item.inventory_on_hand / (item.effective_inventory + qty)) * 100}%` }} />
                 <div className="bg-info" style={{ width: `${(item.inventory_on_order / (item.effective_inventory + qty)) * 100}%` }} />
                 <div className="bg-accent-gold" style={{ width: `${(qty / (item.effective_inventory + qty)) * 100}%` }} />

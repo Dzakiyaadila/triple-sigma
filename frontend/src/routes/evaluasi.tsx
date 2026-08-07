@@ -21,8 +21,8 @@ function Evaluasi() {
   return (
     <div className="mx-auto max-w-4xl">
       <SectionTitle title="Mode evaluasi" desc="Metrik model dan kualitas perkiraan untuk pengguna teknis" />
-      <div className="flex flex-wrap items-center gap-3 rounded-[8px] border border-border bg-card p-4">
-        <span className="text-sm">Tampilkan seluruh field teknis di Rencana Restock</span>
+      <div className="flex flex-wrap items-center gap-3 rounded-[6px] border border-border bg-card p-4">
+        <span className="text-sm">Tampilkan detail teknis lengkap di halaman Rencana Restock</span>
         <Switch checked={technical} onCheckedChange={setTechnical} aria-label="Mode teknis" />
         <FlatBadge tone="info">Teknis</FlatBadge>
         <SimDataBadge className="ml-auto" />
@@ -30,7 +30,7 @@ function Evaluasi() {
 
       <dl className="mt-4 grid gap-3 sm:grid-cols-3">
         {MODEL_METRICS.map((m) => (
-          <div key={m.label} className="rounded-[8px] border border-border bg-card p-4">
+          <div key={m.label} className="rounded-[6px] border border-border bg-card p-4">
             <dt className="text-xs text-muted-foreground">{m.label}</dt>
             <dd className="num mt-1 text-xl font-semibold">{m.value}</dd>
             <p className="mt-1 text-[11px] text-muted-foreground">{m.note}</p>
@@ -39,7 +39,7 @@ function Evaluasi() {
       </dl>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        <Num>{MODEL_VERSION}</Num> · Data {DATA_DATE}. Angka evaluasi merupakan placeholder dari dataset simulasi terkendali.
+        <Num>{MODEL_VERSION}</Num> · Data {DATA_DATE}. Angka di halaman ini masih placeholder, memakai data simulasi terkendali.
       </p>
     </div>
   );
