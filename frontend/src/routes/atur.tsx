@@ -172,28 +172,19 @@ function AturKeputusan() {
 
           {advancedOpen ? (
             <div className="space-y-4 border-t border-border p-4">
-              <div className="rounded-[6px] border border-border p-4">
+              <div className="rounded-[6px] border border-border p-4 opacity-60">
                 <label className="flex items-center justify-between text-sm">
-                  Tentukan target ketersediaan stok minimum
+                  <span>
+                    Tentukan target ketersediaan stok minimum
+                    <span className="ml-2 text-[10px] text-muted-foreground">(segera hadir)</span>
+                  </span>
                   <Switch
-                    checked={setup.serviceLevelOn}
-                    onCheckedChange={(v) => updateSetup({ serviceLevelOn: v })}
-                    aria-label="Target service level"
+                    checked={false}
+                    disabled
+                    onCheckedChange={() => {}}
+                    aria-label="Target service level (belum didukung)"
                   />
                 </label>
-                {setup.serviceLevelOn ? (
-                  <div className="mt-4 flex items-center gap-4">
-                    <Slider
-                      value={[setup.serviceLevel]}
-                      min={70}
-                      max={99}
-                      step={1}
-                      onValueChange={(v) => updateSetup({ serviceLevel: v[0] ?? 90 })}
-                      className="flex-1"
-                    />
-                    <Num className="w-14 text-right text-sm font-medium">{setup.serviceLevel}%</Num>
-                  </div>
-                ) : null}
               </div>
 
               <div className="rounded-[6px] border border-border p-4">
