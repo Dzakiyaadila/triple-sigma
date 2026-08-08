@@ -1,4 +1,4 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Page, type Route, type TestInfo } from "@playwright/test";
 
 interface PlanRecommendation {
   sku_id: string;
@@ -92,7 +92,8 @@ test("authoritative workflow survives races and failures without fake state", as
   await expect(page).toHaveURL(/\/rencana$/);
 
   let releaseMutation: (() => void) | undefined;
-  await page.route("**/api/v2/decision-runs/*/recommendations/*", async (route) => {
+  const delayedMutationPattern = "**/api/v2/decision-runs/*/recommendations/*";
+  const delayedMutationHandler = async (route: Route) => {
     if (route.request().method() !== "PATCH") {
       await route.continue();
       return;
@@ -101,7 +102,8 @@ test("authoritative workflow survives races and failures without fake state", as
       releaseMutation = resolve;
     });
     await route.continue();
-  });
+  };
+  await page.route(delayedMutationPattern, delayedMutationHandler);
 
   const secondCard = page.locator("article").filter({ hasText: positive[1].sku_id });
   const secondApprove = secondCard.getByRole("button", { name: "Setujui", exact: true });
@@ -113,8 +115,15 @@ test("authoritative workflow survives races and failures without fake state", as
   await expect(page.getByText(/Tunggu perubahan SKU selesai disimpan/)).toBeVisible();
   await expect(page.getByRole("button", { name: "Konfirmasi Pesanan" })).toBeDisabled();
 
+  const mutationResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().includes(`/api/v2/decision-runs/${plan.run_id}/recommendations/`),
+  );
   releaseMutation?.();
-  await page.unroute("**/api/v2/decision-runs/*/recommendations/*");
+  const mutationResponse = await mutationResponsePromise;
+  expect(mutationResponse.ok()).toBe(true);
+  await page.unroute(delayedMutationPattern, delayedMutationHandler);
   await expect(page.getByText(/Tunggu perubahan SKU selesai disimpan/)).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Konfirmasi Pesanan" })).toBeEnabled();
 
@@ -137,5 +146,7 @@ test("authoritative workflow survives races and failures without fake state", as
 
   await page.getByRole("button", { name: "Atur Keputusan" }).click();
   await page.getByLabel("Modal restock tersedia").fill("9000000");
-  await expect(page.getByRole("button", { name: "Rencana Restock" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "3 Rencana Restock", exact: true }),
+  ).toBeDisabled();
 });
