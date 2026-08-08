@@ -8,12 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  type ItemStatus,
-  type PlanItem,
-  type PolicyStyle,
-  type RunRow,
-} from "./plan-data";
+import { type ItemStatus, type PlanItem, type PolicyStyle, type RunRow } from "./plan-data";
 import {
   confirmDecisionRun,
   createDecisionRun,
@@ -286,87 +281,131 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     setConfirmError(null);
   }, [clearTimers]);
 
-  const chooseDataset = useCallback((kind: DatasetKind, file?: File) => {
-    clearRunState();
-    const requestId = ++validationRequestId.current;
-    setValidation("running");
-    setValidationStep(0);
-    productRequestId.current += 1;
-    setAvailableStores([]);
-    setAvailableProducts([]);
-    setProductsLoading(false);
-    setProductsError(null);
+  const chooseDataset = useCallback(
+    (kind: DatasetKind, file?: File) => {
+      clearRunState();
+      const requestId = ++validationRequestId.current;
+      setValidation("running");
+      setValidationStep(0);
+      productRequestId.current += 1;
+      setAvailableStores([]);
+      setAvailableProducts([]);
+      setProductsLoading(false);
+      setProductsError(null);
 
-    VALIDATION_STEP_LABELS.forEach((_, index) => {
-      timers.current.push(
-        window.setTimeout(() => {
-          if (validationRequestId.current === requestId) {
-            setValidationStep(index);
-          }
-        }, index * 400),
-      );
-    });
-
-    const fetchDatasetOptions = async (
-      datasetId: string,
-      datasetState: DatasetState,
-    ) => {
-      const stores = await getDatasetStores(datasetId);
-      const selectedStoreId = stores[0]?.store_id ?? "";
-      if (!selectedStoreId) {
-        throw new Error("Dataset tidak memiliki toko yang dapat dipilih.");
-      }
-      if (validationRequestId.current !== requestId) return;
-
-      setAvailableStores(stores);
-      setSetup((current) => {
-        const latestDate = latestSupportedDecisionDate(
-          datasetState.maxDate,
-          datasetState.calendarMaxDate,
-          current.horizon,
+      VALIDATION_STEP_LABELS.forEach((_, index) => {
+        timers.current.push(
+          window.setTimeout(() => {
+            if (validationRequestId.current === requestId) {
+              setValidationStep(index);
+            }
+          }, index * 400),
         );
-
-        return {
-          ...current,
-          storeId: selectedStoreId,
-          date: latestDate ?? "",
-          protectedSkus: [],
-        };
       });
-    };
 
-    const showFailure = (message: string, fileName?: string) => {
-      if (validationRequestId.current !== requestId) return;
+      const fetchDatasetOptions = async (datasetId: string, datasetState: DatasetState) => {
+        const stores = await getDatasetStores(datasetId);
+        const selectedStoreId = stores[0]?.store_id ?? "";
+        if (!selectedStoreId) {
+          throw new Error("Dataset tidak memiliki toko yang dapat dipilih.");
+        }
+        if (validationRequestId.current !== requestId) return;
 
-      setDataset({
-        kind,
-        ...(fileName ? { fileName } : {}),
-        datasetId: "",
-        minDate: null,
-        maxDate: null,
-        calendarMinDate: null,
-        calendarMaxDate: null,
-        summary: { days: 0, stores: 0, skus: 0, suppliers: 0, rows: 0 },
-        issues: [
-          {
-            where: fileName ?? "Data demo",
-            message,
-            severity: "error",
-          },
-        ],
-        hasFatal: true,
-      });
-      setValidation("done");
-    };
+        setAvailableStores(stores);
+        setSetup((current) => {
+          const latestDate = latestSupportedDecisionDate(
+            datasetState.maxDate,
+            datasetState.calendarMaxDate,
+            current.horizon,
+          );
 
-    if (kind === "demo") {
-      getDemoDatasetReadiness()
+          return {
+            ...current,
+            storeId: selectedStoreId,
+            date: latestDate ?? "",
+            protectedSkus: [],
+          };
+        });
+      };
+
+      const showFailure = (message: string, fileName?: string) => {
+        if (validationRequestId.current !== requestId) return;
+
+        setDataset({
+          kind,
+          ...(fileName ? { fileName } : {}),
+          datasetId: "",
+          minDate: null,
+          maxDate: null,
+          calendarMinDate: null,
+          calendarMaxDate: null,
+          summary: { days: 0, stores: 0, skus: 0, suppliers: 0, rows: 0 },
+          issues: [
+            {
+              where: fileName ?? "Data demo",
+              message,
+              severity: "error",
+            },
+          ],
+          hasFatal: true,
+        });
+        setValidation("done");
+      };
+
+      if (kind === "demo") {
+        getDemoDatasetReadiness()
+          .then(async (res) => {
+            if (validationRequestId.current !== requestId) return;
+
+            const nextDataset: DatasetState = {
+              kind: "demo",
+              datasetId: res.dataset_id,
+              minDate: res.min_date,
+              maxDate: res.max_date,
+              calendarMinDate: res.calendar_min_date,
+              calendarMaxDate: res.calendar_max_date,
+              summary: {
+                days: res.days_covered,
+                stores: res.store_count,
+                skus: res.sku_count,
+                suppliers: res.supplier_count,
+                rows: res.transaction_count,
+              },
+              issues: res.warnings.map((warning) => ({
+                where: "Data demo",
+                message: warning,
+                severity: "warning" as const,
+              })),
+              hasFatal: !res.is_ready,
+            };
+
+            setDataset(nextDataset);
+            setValidation("done");
+
+            if (!res.is_ready) return;
+            await fetchDatasetOptions(res.dataset_id, nextDataset);
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Gagal memuat data demo.";
+            showFailure(message);
+          });
+        return;
+      }
+
+      if (!file) {
+        setValidation("idle");
+        return;
+      }
+
+      uploadDataset(file)
         .then(async (res) => {
           if (validationRequestId.current !== requestId) return;
 
           const nextDataset: DatasetState = {
-            kind: "demo",
+            kind: "upload",
+            fileName: file.name,
             datasetId: res.dataset_id,
+            ...(res.data_hash ? { dataHash: res.data_hash } : {}),
             minDate: res.min_date,
             maxDate: res.max_date,
             calendarMinDate: res.calendar_min_date,
@@ -378,71 +417,23 @@ export function RestockProvider({ children }: { children: ReactNode }) {
               suppliers: res.supplier_count,
               rows: res.transaction_count,
             },
-            issues: res.warnings.map((warning) => ({
-              where: "Data demo",
-              message: warning,
-              severity: "warning" as const,
-            })),
+            issues: res.issues,
             hasFatal: !res.is_ready,
           };
 
           setDataset(nextDataset);
           setValidation("done");
 
-          if (!res.is_ready) return;
+          if (!res.is_ready || !res.dataset_id) return;
           await fetchDatasetOptions(res.dataset_id, nextDataset);
         })
         .catch((error: unknown) => {
-          const message = error instanceof Error
-            ? error.message
-            : "Gagal memuat data demo.";
-          showFailure(message);
+          const message = error instanceof Error ? error.message : "Upload gagal diproses.";
+          showFailure(message, file.name);
         });
-      return;
-    }
-
-    if (!file) {
-      setValidation("idle");
-      return;
-    }
-
-    uploadDataset(file)
-      .then(async (res) => {
-        if (validationRequestId.current !== requestId) return;
-
-        const nextDataset: DatasetState = {
-          kind: "upload",
-          fileName: file.name,
-          datasetId: res.dataset_id,
-          ...(res.data_hash ? { dataHash: res.data_hash } : {}),
-          minDate: res.min_date,
-          maxDate: res.max_date,
-          calendarMinDate: res.calendar_min_date,
-          calendarMaxDate: res.calendar_max_date,
-          summary: {
-            days: res.days_covered,
-            stores: res.store_count,
-            skus: res.sku_count,
-            suppliers: res.supplier_count,
-            rows: res.transaction_count,
-          },
-          issues: res.issues,
-          hasFatal: !res.is_ready,
-        };
-
-        setDataset(nextDataset);
-        setValidation("done");
-
-        if (!res.is_ready || !res.dataset_id) return;
-        await fetchDatasetOptions(res.dataset_id, nextDataset);
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error
-          ? error.message
-          : "Upload gagal diproses.";
-        showFailure(message, file.name);
-      });
-  }, [clearRunState]);
+    },
+    [clearRunState],
+  );
 
   const resetDataset = useCallback(() => {
     clearRunState();
@@ -463,38 +454,35 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     }));
   }, [clearRunState]);
 
-  const updateSetup = useCallback((patch: Partial<SetupState>) => {
-    clearRunState();
-    setSetup((current) => {
-      const next = { ...current, ...patch };
-      if (patch.storeId && patch.storeId !== current.storeId) {
-        next.protectedSkus = [];
-      }
-      const latestDate = latestSupportedDecisionDate(
-        dataset?.maxDate ?? null,
-        dataset?.calendarMaxDate ?? null,
-        next.horizon,
-      );
+  const updateSetup = useCallback(
+    (patch: Partial<SetupState>) => {
+      clearRunState();
+      setSetup((current) => {
+        const next = { ...current, ...patch };
+        if (patch.storeId && patch.storeId !== current.storeId) {
+          next.protectedSkus = [];
+        }
+        const latestDate = latestSupportedDecisionDate(
+          dataset?.maxDate ?? null,
+          dataset?.calendarMaxDate ?? null,
+          next.horizon,
+        );
 
-      if (latestDate && next.date > latestDate) {
-        next.date = latestDate;
-      }
-      if (dataset?.minDate && next.date < dataset.minDate) {
-        next.date = dataset.minDate;
-      }
+        if (latestDate && next.date > latestDate) {
+          next.date = latestDate;
+        }
+        if (dataset?.minDate && next.date < dataset.minDate) {
+          next.date = dataset.minDate;
+        }
 
-      return next;
-    });
-  }, [clearRunState, dataset]);
+        return next;
+      });
+    },
+    [clearRunState, dataset],
+  );
 
   useEffect(() => {
-    if (
-      !dataset
-      || dataset.hasFatal
-      || !dataset.datasetId
-      || !setup.storeId
-      || !setup.date
-    ) {
+    if (!dataset || dataset.hasFatal || !dataset.datasetId || !setup.storeId || !setup.date) {
       productRequestId.current += 1;
       setAvailableProducts([]);
       setProductsLoading(false);
@@ -520,9 +508,8 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       })
       .catch((error: unknown) => {
         if (productRequestId.current !== requestId) return;
-        const message = error instanceof Error
-          ? error.message
-          : "Gagal memuat SKU untuk toko/tanggal terpilih.";
+        const message =
+          error instanceof Error ? error.message : "Gagal memuat SKU untuk toko/tanggal terpilih.";
         setAvailableProducts([]);
         setProductsLoading(false);
         setProductsError(message);
@@ -570,9 +557,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       })
       .catch((error: unknown) => {
         if (runRequestId.current !== requestId) return;
-        const message = error instanceof Error
-          ? error.message
-          : "Gagal membuat rencana restock.";
+        const message = error instanceof Error ? error.message : "Gagal membuat rencana restock.";
         setJob("error");
         setJobError(message);
       });
@@ -602,60 +587,62 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     [decisions],
   );
 
-  const mutateDecision = useCallback(async (
-    sku: string,
-    status: ItemStatus,
-    qty: number,
-  ): Promise<boolean> => {
-    if (!runId || decisionInFlight.current.has(sku)) return false;
+  const mutateDecision = useCallback(
+    async (sku: string, status: ItemStatus, qty: number): Promise<boolean> => {
+      if (!runId || decisionInFlight.current.has(sku)) return false;
 
-    decisionInFlight.current.add(sku);
-    const normalizedQty = Math.max(0, Math.trunc(qty));
-    setDecisionPendingMap((current) => ({ ...current, [sku]: true }));
-    setDecisionErrorMap((current) => ({ ...current, [sku]: null }));
+      decisionInFlight.current.add(sku);
+      const normalizedQty = Math.max(0, Math.trunc(qty));
+      setDecisionPendingMap((current) => ({ ...current, [sku]: true }));
+      setDecisionErrorMap((current) => ({ ...current, [sku]: null }));
 
-    try {
-      const response = await apiUpdateRecommendation(runId, sku, {
-        status: status as RecommendationStatus,
-        adjusted_qty: normalizedQty,
-      });
+      try {
+        const response = await apiUpdateRecommendation(runId, sku, {
+          status: status as RecommendationStatus,
+          adjusted_qty: normalizedQty,
+        });
 
-      setDecisions((current) => ({
-        ...current,
-        [sku]: {
-          status: response.status as ItemStatus,
-          qty: response.adjusted_qty ?? normalizedQty,
-          requiredCashRp: response.required_cash_rp,
-        },
-      }));
-      return true;
-    } catch (error: unknown) {
-      const message = error instanceof Error
-        ? error.message
-        : "Perubahan keputusan gagal disimpan.";
-      setDecisionErrorMap((current) => ({ ...current, [sku]: message }));
-      return false;
-    } finally {
-      decisionInFlight.current.delete(sku);
-      setDecisionPendingMap((current) => ({ ...current, [sku]: false }));
-    }
-  }, [runId]);
+        setDecisions((current) => ({
+          ...current,
+          [sku]: {
+            status: response.status as ItemStatus,
+            qty: response.adjusted_qty ?? normalizedQty,
+            requiredCashRp: response.required_cash_rp,
+          },
+        }));
+        return true;
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Perubahan keputusan gagal disimpan.";
+        setDecisionErrorMap((current) => ({ ...current, [sku]: message }));
+        return false;
+      } finally {
+        decisionInFlight.current.delete(sku);
+        setDecisionPendingMap((current) => ({ ...current, [sku]: false }));
+      }
+    },
+    [runId],
+  );
 
-  const setQty = useCallback(async (sku: string, qty: number) => {
-    const item = items.find((candidate) => candidate.sku_id === sku);
-    if (!item) return false;
-    const currentStatus = statusOf(item);
-    const nextStatus: ItemStatus = currentStatus === "disetujui"
-      ? "disetujui"
-      : "diedit";
-    return mutateDecision(sku, nextStatus, qty);
-  }, [items, mutateDecision, statusOf]);
+  const setQty = useCallback(
+    async (sku: string, qty: number) => {
+      const item = items.find((candidate) => candidate.sku_id === sku);
+      if (!item) return false;
+      const currentStatus = statusOf(item);
+      const nextStatus: ItemStatus = currentStatus === "disetujui" ? "disetujui" : "diedit";
+      return mutateDecision(sku, nextStatus, qty);
+    },
+    [items, mutateDecision, statusOf],
+  );
 
-  const setStatus = useCallback(async (sku: string, status: ItemStatus) => {
-    const item = items.find((candidate) => candidate.sku_id === sku);
-    if (!item) return false;
-    return mutateDecision(sku, status, qtyOf(item));
-  }, [items, mutateDecision, qtyOf]);
+  const setStatus = useCallback(
+    async (sku: string, status: ItemStatus) => {
+      const item = items.find((candidate) => candidate.sku_id === sku);
+      if (!item) return false;
+      return mutateDecision(sku, status, qtyOf(item));
+    },
+    [items, mutateDecision, qtyOf],
+  );
 
   const decisionPending = useCallback(
     (sku: string) => Boolean(decisionPendingMap[sku]),
@@ -718,9 +705,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       setRuns((current) => [run, ...current]);
       return run;
     } catch (error: unknown) {
-      const message = error instanceof Error
-        ? error.message
-        : "Konfirmasi pesanan gagal.";
+      const message = error instanceof Error ? error.message : "Konfirmasi pesanan gagal.";
       setConfirmError(message);
       throw error;
     } finally {

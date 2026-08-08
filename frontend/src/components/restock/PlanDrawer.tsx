@@ -4,15 +4,7 @@ import { useRestock } from "@/lib/restock-store";
 import { ConfidenceBadge, FlatBadge, Num, RiskBadge } from "./primitives";
 
 export function PlanDrawer() {
-  const {
-    cashOf,
-    items,
-    openSku,
-    planMeta,
-    qtyOf,
-    setOpenSku,
-    setup,
-  } = useRestock();
+  const { cashOf, items, openSku, planMeta, qtyOf, setOpenSku, setup } = useRestock();
 
   if (!openSku) return null;
   const item = items.find((candidate) => candidate.sku_id === openSku);
@@ -57,8 +49,8 @@ export function PlanDrawer() {
               Perkiraan permintaan kumulatif H+{setup.horizon}
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Model produksi memprediksi kuantil kumulatif langsung. Sistem tidak membuat
-              trajektori harian sintetis dari angka kumulatif ini.
+              Model produksi memprediksi kuantil kumulatif langsung. Sistem tidak membuat trajektori
+              harian sintetis dari angka kumulatif ini.
             </p>
             <div className="mt-3 grid grid-cols-3 gap-2">
               <div className="rounded-[6px] border border-border p-3">
@@ -134,9 +126,7 @@ export function PlanDrawer() {
               <tbody>
                 <tr className="border-b border-border">
                   <td className="py-2">Risiko kehabisan</td>
-                  <td className="num py-2 text-right">
-                    {formatPct(item.stockout_risk_before)}
-                  </td>
+                  <td className="num py-2 text-right">{formatPct(item.stockout_risk_before)}</td>
                   <td className="num py-2 text-right text-safe">
                     {formatPct(item.stockout_risk_after)}
                   </td>
@@ -157,9 +147,9 @@ export function PlanDrawer() {
             </table>
             {isAdjusted ? (
               <p className="mt-2 rounded-[6px] border border-info/30 bg-info-soft/50 px-3 py-2 text-xs text-muted-foreground">
-                Nilai “sesudah” dihitung untuk rekomendasi awal {item.recommended_qty} unit.
-                Jumlah manual {qty} unit sudah tersimpan di server, tetapi kurva risiko tidak
-                dihitung ulang pada endpoint edit saat ini.
+                Nilai “sesudah” dihitung untuk rekomendasi awal {item.recommended_qty} unit. Jumlah
+                manual {qty} unit sudah tersimpan di server, tetapi kurva risiko tidak dihitung
+                ulang pada endpoint edit saat ini.
               </p>
             ) : null}
           </section>
@@ -193,8 +183,7 @@ export function PlanDrawer() {
               </p>
             ) : null}
             <p className="text-sm text-muted-foreground">
-              Biaya keputusan saat ini{" "}
-              <Num className="text-foreground">{formatRupiah(cash)}</Num>.
+              Biaya keputusan saat ini <Num className="text-foreground">{formatRupiah(cash)}</Num>.
             </p>
           </section>
 

@@ -2,22 +2,9 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Scale, Shield, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  POLICY_LABEL,
-  formatRupiah,
-  parseRupiah,
-  type PolicyStyle,
-} from "@/lib/plan-data";
-import {
-  latestSupportedDecisionDate,
-  useRestock,
-} from "@/lib/restock-store";
-import {
-  EmptyState,
-  FlatBadge,
-  GoldButton,
-  SectionTitle,
-} from "@/components/restock/primitives";
+import { POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
+import { latestSupportedDecisionDate, useRestock } from "@/lib/restock-store";
+import { EmptyState, FlatBadge, GoldButton, SectionTitle } from "@/components/restock/primitives";
 
 export const Route = createFileRoute("/atur")({
   head: () => ({
@@ -25,7 +12,8 @@ export const Route = createFileRoute("/atur")({
       { title: "Atur Keputusan — RestockIQ" },
       {
         name: "description",
-        content: "Tentukan toko, tanggal keputusan, modal restock, horizon perkiraan, dan gaya kebijakan.",
+        content:
+          "Tentukan toko, tanggal keputusan, modal restock, horizon perkiraan, dan gaya kebijakan.",
       },
       { property: "og:title", content: "Atur Keputusan — RestockIQ" },
       {
@@ -76,9 +64,7 @@ function AturKeputusan() {
           title="Belum ada data siap"
           desc="Pilih data demo atau unggah data toko yang lolos validasi terlebih dahulu."
           action={
-            <GoldButton onClick={() => navigate({ to: "/" })}>
-              Kembali ke Pilih Data
-            </GoldButton>
+            <GoldButton onClick={() => navigate({ to: "/" })}>Kembali ke Pilih Data</GoldButton>
           }
         />
       </div>
@@ -91,11 +77,11 @@ function AturKeputusan() {
     setup.horizon,
   );
   const canRun = Boolean(
-    setup.storeId
-    && setup.date
-    && latestDate
-    && setup.date <= latestDate
-    && (!dataset.minDate || setup.date >= dataset.minDate),
+    setup.storeId &&
+    setup.date &&
+    latestDate &&
+    setup.date <= latestDate &&
+    (!dataset.minDate || setup.date >= dataset.minDate),
   );
 
   return (
@@ -152,9 +138,11 @@ function AturKeputusan() {
             <span className="text-muted-foreground">Horizon perkiraan</span>
             <select
               value={setup.horizon}
-              onChange={(event) => updateSetup({
-                horizon: Number(event.target.value) === 14 ? 14 : 7,
-              })}
+              onChange={(event) =>
+                updateSetup({
+                  horizon: Number(event.target.value) === 14 ? 14 : 7,
+                })
+              }
               className="mt-1 h-10 w-full rounded-[6px] border border-border bg-background px-3 text-sm"
             >
               <option value={7}>7 hari</option>
@@ -181,14 +169,9 @@ function AturKeputusan() {
                   )}
                 >
                   <policy.icon
-                    className={cn(
-                      "h-5 w-5",
-                      active ? "text-accent-gold" : "text-muted-foreground",
-                    )}
+                    className={cn("h-5 w-5", active ? "text-accent-gold" : "text-muted-foreground")}
                   />
-                  <p className="mt-2 text-sm font-medium">
-                    {POLICY_LABEL[policy.id]}
-                  </p>
+                  <p className="mt-2 text-sm font-medium">{POLICY_LABEL[policy.id]}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{policy.desc}</p>
                 </button>
               );
@@ -214,51 +197,55 @@ function AturKeputusan() {
           </div>
 
           {productsLoading ? (
-            <p className="mt-3 text-xs text-muted-foreground">Memuat SKU yang valid untuk keputusan ini…</p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Memuat SKU yang valid untuk keputusan ini…
+            </p>
           ) : productsError ? (
             <p className="mt-3 rounded-[6px] border border-warn/40 bg-warn-soft px-3 py-2 text-xs text-muted-foreground">
-              Opsi perlindungan SKU tidak tersedia: {productsError}. Rencana tetap dapat dibuat tanpa protected SKU.
+              Opsi perlindungan SKU tidak tersedia: {productsError}. Rencana tetap dapat dibuat
+              tanpa protected SKU.
             </p>
           ) : availableProducts.length === 0 ? (
-            <p className="mt-3 text-xs text-muted-foreground">Tidak ada SKU yang tersedia untuk toko/tanggal ini.</p>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Tidak ada SKU yang tersedia untuk toko/tanggal ini.
+            </p>
           ) : (
             <div className="mt-3 max-h-40 overflow-y-auto pr-1">
               <div className="flex flex-wrap gap-2">
                 {availableProducts.map((product) => {
-                const active = setup.protectedSkus.includes(product.sku_id);
-                return (
-                  <button
-                    key={product.sku_id}
-                    type="button"
-                    onClick={() => updateSetup({
-                      protectedSkus: active
-                        ? setup.protectedSkus.filter((sku) => sku !== product.sku_id)
-                        : [...setup.protectedSkus, product.sku_id],
-                    })}
-                    className={cn(
-                      "rounded-[6px] border px-2 py-1 text-xs transition-colors duration-150",
-                      active
-                        ? "border-accent-gold bg-accent-gold-soft text-accent-gold"
-                        : "border-border text-muted-foreground hover:bg-secondary",
-                    )}
-                  >
-                    {product.product_name}
-                    <span className="num ml-1 text-[10px] opacity-70">
-                      {product.sku_id}
-                    </span>
-                  </button>
-                );
+                  const active = setup.protectedSkus.includes(product.sku_id);
+                  return (
+                    <button
+                      key={product.sku_id}
+                      type="button"
+                      onClick={() =>
+                        updateSetup({
+                          protectedSkus: active
+                            ? setup.protectedSkus.filter((sku) => sku !== product.sku_id)
+                            : [...setup.protectedSkus, product.sku_id],
+                        })
+                      }
+                      className={cn(
+                        "rounded-[6px] border px-2 py-1 text-xs transition-colors duration-150",
+                        active
+                          ? "border-accent-gold bg-accent-gold-soft text-accent-gold"
+                          : "border-border text-muted-foreground hover:bg-secondary",
+                      )}
+                    >
+                      {product.product_name}
+                      <span className="num ml-1 text-[10px] opacity-70">{product.sku_id}</span>
+                    </button>
+                  );
                 })}
               </div>
             </div>
           )}
         </div>
 
-        {/* <div className="rounded-[6px] border border-info/30 bg-info-soft/40 px-3 py-2 text-xs text-muted-foreground">
-          Target service level minimum belum diekspos karena exact optimizer saat ini belum
-          menerapkan constraint tersebut. Kontrol sengaja disembunyikan agar UI tidak
-          mengirim parameter yang diabaikan backend.
-        </div> */}
+        <div className="rounded-[6px] border border-info/30 bg-info-soft/40 px-3 py-2 text-xs text-muted-foreground">
+          Fitur atur target ketersediaan stok minimum belum tersedia untuk saat ini.
+          Kontrol ini akan muncul lagi begitu sudah siap dipakai.
+        </div>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
           <GoldButton

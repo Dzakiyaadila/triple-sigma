@@ -89,11 +89,7 @@ function Evaluasi() {
       />
       <div className="flex flex-wrap items-center gap-3 rounded-[6px] border border-border bg-card p-4">
         <span className="text-sm">Tampilkan detail teknis lengkap di halaman Rencana Restock</span>
-        <Switch
-          checked={technical}
-          onCheckedChange={setTechnical}
-          aria-label="Mode teknis"
-        />
+        <Switch checked={technical} onCheckedChange={setTechnical} aria-label="Mode teknis" />
         <FlatBadge tone="info">Teknis</FlatBadge>
         <FlatBadge className="ml-auto">{planMeta.dataQuality}</FlatBadge>
       </div>
@@ -120,7 +116,8 @@ function Evaluasi() {
         </p>
         <p className="mt-3">
           Akurasi backtest (WMAPE, coverage, bias, oracle gap) tidak ditampilkan di halaman ini
-          sampai evidence freeze menghasilkan artefak evaluasi yang reproducible. Tidak ada angka simulasi yang dipakai sebagai evidence.
+          sampai evidence freeze menghasilkan artefak evaluasi yang reproducible. Tidak ada angka
+          simulasi yang dipakai sebagai evidence.
         </p>
       </div>
     </div>

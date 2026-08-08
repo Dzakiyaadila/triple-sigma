@@ -1,12 +1,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Loader2, Minus, Pencil, Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  formatPct,
-  formatRupiah,
-  formatRupiahShort,
-  type PlanItem,
-} from "@/lib/plan-data";
+import { formatPct, formatRupiah, formatRupiahShort, type PlanItem } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
 import { ConfidenceBadge, FlatBadge, Num, RiskBadge } from "./primitives";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -193,8 +188,9 @@ export function PlanCard({
           </div>
           {isAdjusted ? (
             <p className="col-span-full text-[11px] text-muted-foreground">
-              Dampak risiko “sesudah” di atas berasal dari rekomendasi model awal {item.recommended_qty} unit.
-              Perubahan jumlah manual saat ini hanya mengubah keputusan dan biaya pesanan, bukan menghitung ulang kurva risiko.
+              Dampak risiko “sesudah” di atas berasal dari rekomendasi model awal{" "}
+              {item.recommended_qty} unit. Perubahan jumlah manual saat ini hanya mengubah keputusan
+              dan biaya pesanan, bukan menghitung ulang kurva risiko.
             </p>
           ) : null}
         </div>
@@ -212,10 +208,8 @@ export function PlanCard({
           <span className="hidden h-3 w-px bg-border sm:block" />
           <span>
             Tepat waktu{" "}
-            <Num className="text-foreground">
-              {formatPct(item.supplier_on_time_probability)}
-            </Num>{" "}
-            · P90 lead time{" "}
+            <Num className="text-foreground">{formatPct(item.supplier_on_time_probability)}</Num> ·
+            P90 lead time{" "}
             <Num className="text-foreground">
               {item.supplier_p90_lead_time_days.toFixed(1)} hari
             </Num>
@@ -280,10 +274,7 @@ export function PlanCard({
           type="button"
           disabled={pending}
           onClick={() => {
-            void setStatus(
-              item.sku_id,
-              status === "disetujui" ? "belum_diputuskan" : "disetujui",
-            );
+            void setStatus(item.sku_id, status === "disetujui" ? "belum_diputuskan" : "disetujui");
           }}
           className={cn(
             "inline-flex h-9 items-center gap-1.5 rounded-[6px] px-3 text-sm font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
@@ -308,10 +299,7 @@ export function PlanCard({
           type="button"
           disabled={pending}
           onClick={() => {
-            void setStatus(
-              item.sku_id,
-              status === "ditolak" ? "belum_diputuskan" : "ditolak",
-            );
+            void setStatus(item.sku_id, status === "ditolak" ? "belum_diputuskan" : "ditolak");
           }}
           className={cn(
             "inline-flex h-9 items-center gap-1.5 rounded-[6px] border px-3 text-sm transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50",
@@ -320,7 +308,11 @@ export function PlanCard({
               : "border-border hover:bg-secondary",
           )}
         >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+          {pending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X className="h-3.5 w-3.5" />
+          )}
           {status === "ditolak" ? "Ditolak" : "Tolak"}
         </button>
         <button

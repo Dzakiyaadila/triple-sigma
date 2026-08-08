@@ -20,7 +20,8 @@ export const Route = createFileRoute("/rencana")({
       { title: "Rencana Restock — RestockIQ" },
       {
         name: "description",
-        content: "Rencana restock terurut prioritas berdasarkan demand, supplier risk, dan batas modal.",
+        content:
+          "Rencana restock terurut prioritas berdasarkan demand, supplier risk, dan batas modal.",
       },
       { property: "og:title", content: "Rencana Restock — RestockIQ" },
       {
@@ -61,23 +62,14 @@ function Rencana() {
   const filtered = useMemo(
     () =>
       items.filter((item) => {
-        if (
-          q
-          && !`${item.sku_name} ${item.sku_id}`
-            .toLowerCase()
-            .includes(q.toLowerCase())
-        ) {
+        if (q && !`${item.sku_name} ${item.sku_id}`.toLowerCase().includes(q.toLowerCase())) {
           return false;
         }
         if (cat !== "semua" && item.category !== cat) return false;
         if (conf !== "semua" && item.confidence !== conf) return false;
         if (risk !== "semua") {
           const probability = item.stockout_risk_before * 100;
-          const level = probability >= 30
-            ? "tinggi"
-            : probability >= 15
-              ? "sedang"
-              : "aman";
+          const level = probability >= 30 ? "tinggi" : probability >= 15 ? "sedang" : "aman";
           if (level !== risk) return false;
         }
         return true;
@@ -100,11 +92,7 @@ function Rencana() {
       <EmptyState
         title="Rencana belum dibuat"
         desc="Atur parameter keputusan lalu tekan Buat Rencana Restock."
-        action={
-          <GoldButton onClick={() => navigate({ to: "/atur" })}>
-            Atur keputusan
-          </GoldButton>
-        }
+        action={<GoldButton onClick={() => navigate({ to: "/atur" })}>Atur keputusan</GoldButton>}
       />
     );
   }
@@ -154,11 +142,7 @@ function Rencana() {
           <EmptyState
             title="Rencana kosong"
             desc="Modal restock diisi Rp 0, jadi tidak ada pembelian yang disarankan. Tambahkan modal untuk melihat rekomendasi."
-            action={
-              <GhostButton onClick={() => navigate({ to: "/atur" })}>
-                Ubah modal
-              </GhostButton>
-            }
+            action={<GhostButton onClick={() => navigate({ to: "/atur" })}>Ubah modal</GhostButton>}
           />
         ) : (
           <>
@@ -170,9 +154,7 @@ function Rencana() {
               <div className="rounded-[6px] border border-border bg-card p-4">
                 <p className="text-xs text-muted-foreground">Alokasi model / modal tersedia</p>
                 <p className="mt-1 text-sm">
-                  <Num className="font-semibold">
-                    {formatRupiah(planMeta.budgetAllocatedRp)}
-                  </Num>{" "}
+                  <Num className="font-semibold">{formatRupiah(planMeta.budgetAllocatedRp)}</Num>{" "}
                   <span className="text-muted-foreground">/</span>{" "}
                   <Num>{formatRupiah(setup.budget)}</Num>
                 </p>
@@ -232,9 +214,7 @@ function Rencana() {
                   </div>
                   <div className="rounded-[6px] border border-border bg-card p-3">
                     <dt className="text-[11px] text-muted-foreground">Runtime</dt>
-                    <dd className="num mt-1 text-base font-semibold">
-                      {planMeta.runtimeMs} ms
-                    </dd>
+                    <dd className="num mt-1 text-base font-semibold">{planMeta.runtimeMs} ms</dd>
                   </div>
                   <div className="rounded-[6px] border border-border bg-card p-3">
                     <dt className="text-[11px] text-muted-foreground">Data hash</dt>
@@ -265,7 +245,8 @@ function Rencana() {
             {lowConf > 0 ? (
               <p className="mt-4 flex items-start gap-2 rounded-[6px] border border-warn/40 bg-warn-soft px-3 py-2 text-xs">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                Sebagian SKU memiliki confidence rendah. Buka detail SKU untuk melihat warning model.
+                Sebagian SKU memiliki confidence rendah. Buka detail SKU untuk melihat warning
+                model.
               </p>
             ) : null}
 
@@ -296,7 +277,9 @@ function Rencana() {
               >
                 <option value="semua">Semua kategori</option>
                 {categories.map((category) => (
-                  <option key={category} value={category}>{category}</option>
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
                 ))}
               </select>
               <select
@@ -335,9 +318,7 @@ function Rencana() {
                     key={item.sku_id}
                     item={item}
                     editing={editing === item.sku_id}
-                    onEdit={() => setEditing(
-                      editing === item.sku_id ? null : item.sku_id,
-                    )}
+                    onEdit={() => setEditing(editing === item.sku_id ? null : item.sku_id)}
                   />
                 ))
               )}
