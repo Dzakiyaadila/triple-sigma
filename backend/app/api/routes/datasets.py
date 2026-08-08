@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.schemas.dataset import (
     DatasetReadiness,
     DatasetUploadResponse,
+    SkuOption,
     StoreOut,
 )
 from app.services.dataset_scope import DEMO_DATASET_ID, dataset_filter
@@ -125,5 +126,24 @@ def get_dataset_stores(
             select(Store)
             .where(Store.store_id.in_(store_ids))
             .order_by(Store.store_id)
+        )
+    )
+
+
+@router.get("/{dataset_id}/skus", response_model=list[SkuOption])
+def get_dataset_skus(dataset_id: str, store_id: str, db: Session = Depends(get_db)):
+    sku_ids_query = select(func.distinct(DailySales.sku_id)).where(
+        DailySales.store_id == store_id,
+        dataset_filter(DailySales.dataset_id, dataset_id),
+    )
+    sku_ids = {row[0] for row in db.execute(sku_ids_query) if row[0] is not None}
+    if not sku_ids:
+        return []
+
+    return list(
+        db.scalars(
+            select(Product)
+            .where(Product.sku_id.in_(sku_ids))
+            .order_by(Product.sku_id)
         )
     )
