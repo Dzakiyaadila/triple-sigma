@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Home, History, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DATA_DATE } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
 import { PlanDrawer } from "./PlanDrawer";
 import { Switch } from "@/components/ui/switch";
@@ -90,7 +89,7 @@ function WizardProgress({ path }: { path: string }) {
 }
 
 function TopBar() {
-  const { technical, setTechnical } = useRestock();
+  const { dataset, planMeta, setup, technical, setTechnical } = useRestock();
   return (
     <div className="flex items-center gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur lg:px-6">
       <Link to="/" className="font-display text-base font-semibold tracking-tight">
@@ -100,9 +99,12 @@ function TopBar() {
         Asisten keputusan restock
       </span>
       <div className="ml-auto flex items-center gap-3">
-        <span className="hidden rounded-[6px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
-          Data per <span className="num">{DATA_DATE}</span>
-        </span>
+        {dataset ? (
+          <span className="hidden rounded-[6px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
+            {planMeta ? "Keputusan" : "Data s.d."}{" "}
+            <span className="num">{planMeta ? setup.date : (dataset.maxDate ?? "—")}</span>
+          </span>
+        ) : null}
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <FlatBadge tone="info">Teknis</FlatBadge>
           <Switch
@@ -124,37 +126,35 @@ export function AppShell({ children }: { children: ReactNode }) {
     <TooltipProvider delayDuration={150}>
       <div className="min-h-screen bg-background">
         <div className="flex">
-          
-            <nav className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-border bg-card px-3 py-5 md:flex">
-              <div className="px-2 pb-6">
-                <span className="font-display text-lg font-semibold tracking-tight">RestockIQ</span>
-                <p className="mt-1 text-[11px] text-muted-foreground">Asisten keputusan restock</p>
-              </div>
-              {SIDEBAR.map((n) => {
-                const active = path === n.to;
-                return (
-                  <Link
-                    key={n.to}
-                    to={n.to}
-                    className={cn(
-                      "mb-1 flex items-center gap-3 rounded-[6px] px-3 py-2 text-sm transition-colors duration-150",
-                      active
-                        ? "bg-secondary font-medium text-foreground"
-                        : "text-muted-foreground hover:bg-secondary/60",
-                    )}
-                  >
-                    <n.icon className="h-4 w-4" />
-                    {n.label}
-                    {"badge" in n && n.badge ? (
-                      <span className="num ml-auto rounded-[6px] border border-info/40 bg-info-soft px-1.5 py-0.5 text-[10px] font-medium text-info">
-                        {n.badge}
-                      </span>
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </nav>
-          
+          <nav className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-border bg-card px-3 py-5 md:flex">
+            <div className="px-2 pb-6">
+              <span className="font-display text-lg font-semibold tracking-tight">RestockIQ</span>
+              <p className="mt-1 text-[11px] text-muted-foreground">Asisten keputusan restock</p>
+            </div>
+            {SIDEBAR.map((n) => {
+              const active = path === n.to;
+              return (
+                <Link
+                  key={n.to}
+                  to={n.to}
+                  className={cn(
+                    "mb-1 flex items-center gap-3 rounded-[6px] px-3 py-2 text-sm transition-colors duration-150",
+                    active
+                      ? "bg-secondary font-medium text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/60",
+                  )}
+                >
+                  <n.icon className="h-4 w-4" />
+                  {n.label}
+                  {"badge" in n && n.badge ? (
+                    <span className="num ml-auto rounded-[6px] border border-info/40 bg-info-soft px-1.5 py-0.5 text-[10px] font-medium text-info">
+                      {n.badge}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </nav>
 
           <div className="min-w-0 flex-1">
             <TopBar />
@@ -163,26 +163,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        
-          <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-card md:hidden">
-            {SIDEBAR.map((n) => {
-              const active = path === n.to;
-              return (
-                <Link
-                  key={n.to}
-                  to={n.to}
-                  className={cn(
-                    "flex flex-1 flex-col items-center gap-1 py-2 text-[10px] transition-colors duration-150",
-                    active ? "text-accent-gold" : "text-muted-foreground",
-                  )}
-                >
-                  <n.icon className="h-4 w-4" />
-                  {n.label}
-                </Link>
-              );
-            })}
-          </nav>
-        
+        <nav className="fixed inset-x-0 bottom-0 z-30 flex border-t border-border bg-card md:hidden">
+          {SIDEBAR.map((n) => {
+            const active = path === n.to;
+            return (
+              <Link
+                key={n.to}
+                to={n.to}
+                className={cn(
+                  "flex flex-1 flex-col items-center gap-1 py-2 text-[10px] transition-colors duration-150",
+                  active ? "text-accent-gold" : "text-muted-foreground",
+                )}
+              >
+                <n.icon className="h-4 w-4" />
+                {n.label}
+              </Link>
+            );
+          })}
+        </nav>
 
         <PlanDrawer />
       </div>

@@ -38,13 +38,7 @@ const confStyles: Record<Confidence, string> = {
   rendah: "border-warn/50 bg-warn-soft text-[oklch(0.55_0.11_81)]",
 };
 
-export function ConfidenceBadge({
-  level,
-  className,
-}: {
-  level: Confidence;
-  className?: string;
-}) {
+export function ConfidenceBadge({ level, className }: { level: Confidence; className?: string }) {
   return (
     <span
       className={cn(
@@ -136,13 +130,7 @@ export function SectionTitle({ title, desc }: { title: string; desc?: string }) 
   );
 }
 
-export function Panel({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn("rounded-[6px] border border-border bg-card p-5", className)}>
       {children}

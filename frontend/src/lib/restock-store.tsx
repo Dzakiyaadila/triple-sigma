@@ -2,28 +2,25 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { type ItemStatus, type PlanItem, type PolicyStyle, type RunRow } from "./plan-data";
 import {
-  DATA_DATE_ISO,
-  STORES,
-  unitCost,
-  type ItemStatus,
-  type PlanItem,
-  type PolicyStyle,
-  type RunRow,
-} from "./plan-data";
-import {
-  getDemoDatasetReadiness,
-  createDecisionRun,
-  updateRecommendation as apiUpdateRecommendation,
   confirmDecisionRun,
-  uploadDataset,
+  createDecisionRun,
+  getDatasetProducts,
   getDatasetStores,
+  getDemoDatasetReadiness,
+  updateRecommendation as apiUpdateRecommendation,
+  uploadDataset,
   type ApiRecommendation,
+  type ProductOption,
+  type RecommendationStatus,
+  type RestockPlanResponse,
   type StoreOption,
   type UploadIssue,
 } from "./api";
@@ -31,7 +28,6 @@ import {
 export type DatasetKind = "demo" | "upload";
 export type ValidationPhase = "idle" | "running" | "done";
 export type JobPhase = "idle" | "running" | "done" | "error";
-export type JobError = "solver_timeout" | null;
 
 export interface DatasetSummary {
   days: number;
@@ -61,14 +57,26 @@ export interface SetupState {
   budget: number;
   horizon: 7 | 14;
   policy: PolicyStyle;
-  serviceLevelOn: boolean;
-  serviceLevel: number;
   protectedSkus: string[];
+}
+
+export interface PlanMeta {
+  modelVersion: string;
+  dataHash: string;
+  budgetAllocatedRp: number;
+  expectedNovContributionRp: number;
+  estimatedLmarAvoidedRp: number;
+  estimatedWcarAddedRp: number;
+  estimatedFillRate: number;
+  dataQuality: string;
+  warnings: string[];
+  runtimeMs: number;
 }
 
 interface Decision {
   status: ItemStatus;
   qty: number;
+  requiredCashRp: number;
 }
 
 interface Ctx {
@@ -86,17 +94,21 @@ interface Ctx {
 
   job: JobPhase;
   jobStep: number;
-  jobError: JobError;
+  jobError: string | null;
   runId: string | null;
+  planMeta: PlanMeta | null;
   runPlan: () => void;
   resetRun: () => void;
 
   items: PlanItem[];
   decisions: Record<string, Decision>;
   qtyOf: (item: PlanItem) => number;
+  cashOf: (item: PlanItem) => number;
   statusOf: (item: PlanItem) => ItemStatus;
-  setQty: (sku: string, qty: number) => void;
-  setStatus: (sku: string, status: ItemStatus) => void;
+  setQty: (sku: string, qty: number) => Promise<boolean>;
+  setStatus: (sku: string, status: ItemStatus) => Promise<boolean>;
+  decisionPending: (sku: string) => boolean;
+  decisionError: (sku: string) => string | null;
 
   cart: Array<{ item: PlanItem; qty: number; subtotal: number }>;
   cartTotal: number;
@@ -106,10 +118,16 @@ interface Ctx {
   setOpenSku: (v: string | null) => void;
 
   runs: RunRow[];
-  confirmOrder: () => RunRow;
+  confirmOrder: () => Promise<RunRow>;
+  confirmPending: boolean;
+  confirmError: string | null;
   hasCompletedRun: boolean;
   lastRun: RunRow | null;
   availableStores: StoreOption[];
+  availableProducts: ProductOption[];
+  productsLoading: boolean;
+  productsError: string | null;
+  hasPendingMutations: boolean;
 }
 
 const JOB_STEPS = [
@@ -146,8 +164,6 @@ export function latestSupportedDecisionDate(
   return datasetMaxDate < calendarBound ? datasetMaxDate : calendarBound;
 }
 
-const RestockCtx = createContext<Ctx | null>(null);
-
 function toPlanItem(r: ApiRecommendation): PlanItem {
   return {
     sku_id: r.sku_id,
@@ -181,113 +197,215 @@ function toPlanItem(r: ApiRecommendation): PlanItem {
     reason_more: r.reason_more,
     reason_not_more: r.reason_not_more,
     warnings: r.warnings,
-    status: "belum_diputuskan",
+    status: r.status as ItemStatus,
   };
 }
+
+function toPlanMeta(response: RestockPlanResponse): PlanMeta {
+  return {
+    modelVersion: response.model_version,
+    dataHash: response.data_hash,
+    budgetAllocatedRp: response.budget_allocated_rp,
+    expectedNovContributionRp: response.expected_nov_contribution_rp,
+    estimatedLmarAvoidedRp: response.estimated_lmar_avoided_rp,
+    estimatedWcarAddedRp: response.estimated_wcar_added_rp,
+    estimatedFillRate: response.estimated_fill_rate,
+    dataQuality: response.data_quality,
+    warnings: response.warnings,
+    runtimeMs: response.runtime_ms,
+  };
+}
+
+const RestockCtx = createContext<Ctx | null>(null);
 
 export function RestockProvider({ children }: { children: ReactNode }) {
   const [technical, setTechnical] = useState(false);
   const [dataset, setDataset] = useState<DatasetState | null>(null);
   const [availableStores, setAvailableStores] = useState<StoreOption[]>([]);
+  const [availableProducts, setAvailableProducts] = useState<ProductOption[]>([]);
   const [validation, setValidation] = useState<ValidationPhase>("idle");
   const [validationStep, setValidationStep] = useState(0);
   const timers = useRef<number[]>([]);
   const validationRequestId = useRef(0);
+  const productRequestId = useRef(0);
+  const runRequestId = useRef(0);
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
 
   const [setup, setSetup] = useState<SetupState>({
-    storeId: STORES[0]!.id,
-    date: DATA_DATE_ISO,
-    budget: 3000000,
+    storeId: "",
+    date: "",
+    budget: 3_000_000,
     horizon: 7,
     policy: "seimbang",
-    serviceLevelOn: false,
-    serviceLevel: 90,
     protectedSkus: [],
   });
 
   const [job, setJob] = useState<JobPhase>("idle");
   const [jobStep, setJobStep] = useState(0);
-  const [jobError, setJobError] = useState<JobError>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  const [planMeta, setPlanMeta] = useState<PlanMeta | null>(null);
   const [planItems, setPlanItems] = useState<PlanItem[]>([]);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [decisionPendingMap, setDecisionPendingMap] = useState<Record<string, boolean>>({});
+  const [decisionErrorMap, setDecisionErrorMap] = useState<Record<string, string | null>>({});
+  const decisionInFlight = useRef(new Set<string>());
   const [openSku, setOpenSku] = useState<string | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const confirmInFlight = useRef(false);
 
-  const clearTimers = () => {
-    timers.current.forEach((t) => window.clearTimeout(t));
+  const clearTimers = useCallback(() => {
+    timers.current.forEach((timer) => window.clearTimeout(timer));
     timers.current = [];
-  };
-  const chooseDataset = useCallback((kind: DatasetKind, file?: File) => {
+  }, []);
+
+  const clearRunState = useCallback(() => {
     clearTimers();
-    const requestId = ++validationRequestId.current;
-    setValidation("running");
-    setValidationStep(0);
-    setAvailableStores([]);
+    runRequestId.current += 1;
+    setJob("idle");
+    setJobStep(0);
+    setJobError(null);
+    setRunId(null);
+    setPlanMeta(null);
+    setPlanItems([]);
+    setDecisions({});
+    setDecisionPendingMap({});
+    setDecisionErrorMap({});
+    decisionInFlight.current.clear();
+    setOpenSku(null);
+    confirmInFlight.current = false;
+    setConfirmPending(false);
+    setConfirmError(null);
+  }, [clearTimers]);
 
-    VALIDATION_STEP_LABELS.forEach((_, index) => {
-      timers.current.push(
-        window.setTimeout(() => {
-          if (validationRequestId.current === requestId) {
-            setValidationStep(index);
-          }
-        }, index * 400),
-      );
-    });
+  const chooseDataset = useCallback(
+    (kind: DatasetKind, file?: File) => {
+      clearRunState();
+      const requestId = ++validationRequestId.current;
+      setValidation("running");
+      setValidationStep(0);
+      productRequestId.current += 1;
+      setAvailableStores([]);
+      setAvailableProducts([]);
+      setProductsLoading(false);
+      setProductsError(null);
 
-    const applyStores = (stores: StoreOption[], datasetState: DatasetState) => {
-      if (validationRequestId.current !== requestId) return;
-
-      setAvailableStores(stores);
-      setSetup((current) => {
-        const latestDate = latestSupportedDecisionDate(
-          datasetState.maxDate,
-          datasetState.calendarMaxDate,
-          current.horizon,
+      VALIDATION_STEP_LABELS.forEach((_, index) => {
+        timers.current.push(
+          window.setTimeout(() => {
+            if (validationRequestId.current === requestId) {
+              setValidationStep(index);
+            }
+          }, index * 400),
         );
-
-        return {
-          ...current,
-          storeId: stores.some((store) => store.store_id === current.storeId)
-            ? current.storeId
-            : (stores[0]?.store_id ?? current.storeId),
-          date: latestDate ?? current.date,
-        };
       });
-    };
 
-    const showFailure = (message: string, fileName?: string) => {
-      if (validationRequestId.current !== requestId) return;
+      const fetchDatasetOptions = async (datasetId: string, datasetState: DatasetState) => {
+        const stores = await getDatasetStores(datasetId);
+        const selectedStoreId = stores[0]?.store_id ?? "";
+        if (!selectedStoreId) {
+          throw new Error("Dataset tidak memiliki toko yang dapat dipilih.");
+        }
+        if (validationRequestId.current !== requestId) return;
 
-      setDataset({
-        kind,
-        ...(fileName ? { fileName } : {}),
-        datasetId: "",
-        minDate: null,
-        maxDate: null,
-        calendarMinDate: null,
-        calendarMaxDate: null,
-        summary: { days: 0, stores: 0, skus: 0, suppliers: 0, rows: 0 },
-        issues: [
-          {
-            where: fileName ?? "Data demo",
-            message,
-            severity: "error",
-          },
-        ],
-        hasFatal: true,
-      });
-      setValidation("done");
-    };
+        setAvailableStores(stores);
+        setSetup((current) => {
+          const latestDate = latestSupportedDecisionDate(
+            datasetState.maxDate,
+            datasetState.calendarMaxDate,
+            current.horizon,
+          );
 
-    if (kind === "demo") {
-      getDemoDatasetReadiness()
+          return {
+            ...current,
+            storeId: selectedStoreId,
+            date: latestDate ?? "",
+            protectedSkus: [],
+          };
+        });
+      };
+
+      const showFailure = (message: string, fileName?: string) => {
+        if (validationRequestId.current !== requestId) return;
+
+        setDataset({
+          kind,
+          ...(fileName ? { fileName } : {}),
+          datasetId: "",
+          minDate: null,
+          maxDate: null,
+          calendarMinDate: null,
+          calendarMaxDate: null,
+          summary: { days: 0, stores: 0, skus: 0, suppliers: 0, rows: 0 },
+          issues: [
+            {
+              where: fileName ?? "Data demo",
+              message,
+              severity: "error",
+            },
+          ],
+          hasFatal: true,
+        });
+        setValidation("done");
+      };
+
+      if (kind === "demo") {
+        getDemoDatasetReadiness()
+          .then(async (res) => {
+            if (validationRequestId.current !== requestId) return;
+
+            const nextDataset: DatasetState = {
+              kind: "demo",
+              datasetId: res.dataset_id,
+              minDate: res.min_date,
+              maxDate: res.max_date,
+              calendarMinDate: res.calendar_min_date,
+              calendarMaxDate: res.calendar_max_date,
+              summary: {
+                days: res.days_covered,
+                stores: res.store_count,
+                skus: res.sku_count,
+                suppliers: res.supplier_count,
+                rows: res.transaction_count,
+              },
+              issues: res.warnings.map((warning) => ({
+                where: "Data demo",
+                message: warning,
+                severity: "warning" as const,
+              })),
+              hasFatal: !res.is_ready,
+            };
+
+            setDataset(nextDataset);
+            setValidation("done");
+
+            if (!res.is_ready) return;
+            await fetchDatasetOptions(res.dataset_id, nextDataset);
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : "Gagal memuat data demo.";
+            showFailure(message);
+          });
+        return;
+      }
+
+      if (!file) {
+        setValidation("idle");
+        return;
+      }
+
+      uploadDataset(file)
         .then(async (res) => {
           if (validationRequestId.current !== requestId) return;
 
           const nextDataset: DatasetState = {
-            kind: "demo",
+            kind: "upload",
+            fileName: file.name,
             datasetId: res.dataset_id,
+            ...(res.data_hash ? { dataHash: res.data_hash } : {}),
             minDate: res.min_date,
             maxDate: res.max_date,
             calendarMinDate: res.calendar_min_date,
@@ -299,114 +417,126 @@ export function RestockProvider({ children }: { children: ReactNode }) {
               suppliers: res.supplier_count,
               rows: res.transaction_count,
             },
-            issues: res.warnings.map((warning) => ({
-              where: "Data demo",
-              message: warning,
-              severity: "warning" as const,
-            })),
+            issues: res.issues,
             hasFatal: !res.is_ready,
           };
 
           setDataset(nextDataset);
           setValidation("done");
 
-          if (!res.is_ready) return;
-          const stores = await getDatasetStores(res.dataset_id);
-          applyStores(stores, nextDataset);
+          if (!res.is_ready || !res.dataset_id) return;
+          await fetchDatasetOptions(res.dataset_id, nextDataset);
         })
         .catch((error: unknown) => {
-          const message = error instanceof Error
-            ? error.message
-            : "Gagal memuat data demo.";
-          showFailure(message);
+          const message = error instanceof Error ? error.message : "Upload gagal diproses.";
+          showFailure(message, file.name);
         });
-      return;
-    }
-
-    if (!file) {
-      setValidation("idle");
-      return;
-    }
-
-    uploadDataset(file)
-      .then(async (res) => {
-        if (validationRequestId.current !== requestId) return;
-
-        const nextDataset: DatasetState = {
-          kind: "upload",
-          fileName: file.name,
-          datasetId: res.dataset_id,
-          ...(res.data_hash ? { dataHash: res.data_hash } : {}),
-          minDate: res.min_date,
-          maxDate: res.max_date,
-          calendarMinDate: res.calendar_min_date,
-          calendarMaxDate: res.calendar_max_date,
-          summary: {
-            days: res.days_covered,
-            stores: res.store_count,
-            skus: res.sku_count,
-            suppliers: res.supplier_count,
-            rows: res.transaction_count,
-          },
-          issues: res.issues,
-          hasFatal: !res.is_ready,
-        };
-
-        setDataset(nextDataset);
-        setValidation("done");
-
-        // Structured validation failures intentionally return HTTP 200 so the
-        // report stays visible. There is no dataset identity/store lookup yet.
-        if (!res.is_ready || !res.dataset_id) return;
-
-        const stores = await getDatasetStores(res.dataset_id);
-        applyStores(stores, nextDataset);
-      })
-      .catch((error: unknown) => {
-        const message = error instanceof Error
-          ? error.message
-          : "Upload gagal diproses.";
-        showFailure(message, file.name);
-      });
-  }, []);
+    },
+    [clearRunState],
+  );
 
   const resetDataset = useCallback(() => {
-    clearTimers();
+    clearRunState();
     validationRequestId.current += 1;
+    productRequestId.current += 1;
     setDataset(null);
     setAvailableStores([]);
+    setAvailableProducts([]);
+    setProductsLoading(false);
+    setProductsError(null);
     setValidation("idle");
     setValidationStep(0);
-  }, []);
+    setSetup((current) => ({
+      ...current,
+      storeId: "",
+      date: "",
+      protectedSkus: [],
+    }));
+  }, [clearRunState]);
 
-  const updateSetup = useCallback((patch: Partial<SetupState>) => {
-    setSetup((current) => {
-      const next = { ...current, ...patch };
-      const latestDate = latestSupportedDecisionDate(
-        dataset?.maxDate ?? null,
-        dataset?.calendarMaxDate ?? null,
-        next.horizon,
-      );
+  const updateSetup = useCallback(
+    (patch: Partial<SetupState>) => {
+      clearRunState();
+      setSetup((current) => {
+        const next = { ...current, ...patch };
+        if (patch.storeId && patch.storeId !== current.storeId) {
+          next.protectedSkus = [];
+        }
+        const latestDate = latestSupportedDecisionDate(
+          dataset?.maxDate ?? null,
+          dataset?.calendarMaxDate ?? null,
+          next.horizon,
+        );
 
-      if (latestDate && next.date > latestDate) {
-        next.date = latestDate;
-      }
-      if (dataset?.minDate && next.date < dataset.minDate) {
-        next.date = dataset.minDate;
-      }
+        if (latestDate && next.date > latestDate) {
+          next.date = latestDate;
+        }
+        if (dataset?.minDate && next.date < dataset.minDate) {
+          next.date = dataset.minDate;
+        }
 
-      return next;
-    });
-  }, [dataset]);
+        return next;
+      });
+    },
+    [clearRunState, dataset],
+  );
+
+  useEffect(() => {
+    if (!dataset || dataset.hasFatal || !dataset.datasetId || !setup.storeId || !setup.date) {
+      productRequestId.current += 1;
+      setAvailableProducts([]);
+      setProductsLoading(false);
+      setProductsError(null);
+      return;
+    }
+
+    const requestId = ++productRequestId.current;
+    setAvailableProducts([]);
+    setProductsLoading(true);
+    setProductsError(null);
+
+    getDatasetProducts(dataset.datasetId, setup.storeId, setup.date)
+      .then((products) => {
+        if (productRequestId.current !== requestId) return;
+        setAvailableProducts(products);
+        setProductsLoading(false);
+        const validSkuIds = new Set(products.map((product) => product.sku_id));
+        setSetup((current) => ({
+          ...current,
+          protectedSkus: current.protectedSkus.filter((sku) => validSkuIds.has(sku)),
+        }));
+      })
+      .catch((error: unknown) => {
+        if (productRequestId.current !== requestId) return;
+        const message =
+          error instanceof Error ? error.message : "Gagal memuat SKU untuk toko/tanggal terpilih.";
+        setAvailableProducts([]);
+        setProductsLoading(false);
+        setProductsError(message);
+        setSetup((current) => ({ ...current, protectedSkus: [] }));
+      });
+  }, [dataset, setup.date, setup.storeId]);
 
   const runPlan = useCallback(() => {
-    if (!dataset || dataset.hasFatal || !dataset.datasetId || !setup.storeId) return;
+    if (!dataset || dataset.hasFatal || !dataset.datasetId || !setup.storeId || !setup.date) {
+      return;
+    }
+
     clearTimers();
+    const requestId = ++runRequestId.current;
     setJobError(null);
     setJob("running");
     setJobStep(0);
-    JOB_STEPS.forEach((_, i) => {
-      timers.current.push(window.setTimeout(() => setJobStep(i), i * 500));
+    setRunId(null);
+    setPlanMeta(null);
+    setPlanItems([]);
+    setDecisions({});
+    setDecisionPendingMap({});
+    setDecisionErrorMap({});
+    setConfirmError(null);
+
+    JOB_STEPS.forEach((_, index) => {
+      timers.current.push(window.setTimeout(() => setJobStep(index), index * 500));
     });
 
     createDecisionRun({
@@ -416,30 +546,26 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       budget_rp: setup.budget,
       horizon_days: setup.horizon,
       policy_preset: setup.policy,
-      min_fill_rate: setup.serviceLevelOn ? setup.serviceLevel / 100 : null,
       protected_sku_ids: setup.protectedSkus,
     })
-      .then((res) => {
-        setRunId(res.run_id);
-        setPlanItems(res.recommendations.map(toPlanItem));
+      .then((response) => {
+        if (runRequestId.current !== requestId) return;
+        setRunId(response.run_id);
+        setPlanMeta(toPlanMeta(response));
+        setPlanItems(response.recommendations.map(toPlanItem));
         setJob("done");
       })
-      .catch((err) => {
-        console.error("Gagal membuat rencana restock:", err);
+      .catch((error: unknown) => {
+        if (runRequestId.current !== requestId) return;
+        const message = error instanceof Error ? error.message : "Gagal membuat rencana restock.";
         setJob("error");
-        setJobError("solver_timeout");
+        setJobError(message);
       });
-  }, [dataset, setup]);
+  }, [clearTimers, dataset, setup]);
 
   const resetRun = useCallback(() => {
-    clearTimers();
-    setJob("idle");
-    setJobStep(0);
-    setJobError(null);
-    setRunId(null);
-    setPlanItems([]);
-    setDecisions({});
-  }, []);
+    clearRunState();
+  }, [clearRunState]);
 
   const items = useMemo(() => {
     if (job !== "done") return [];
@@ -450,85 +576,143 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     (item: PlanItem) => decisions[item.sku_id]?.qty ?? item.recommended_qty,
     [decisions],
   );
-  const statusOf = useCallback(
-    (item: PlanItem) => decisions[item.sku_id]?.status ?? "belum_diputuskan",
+
+  const cashOf = useCallback(
+    (item: PlanItem) => decisions[item.sku_id]?.requiredCashRp ?? item.required_cash_rp,
     [decisions],
   );
 
-  const setQty = useCallback(
-    (sku: string, qty: number) => {
-      setDecisions((d) => {
-        const status = d[sku]?.status ?? "belum_diputuskan";
-        const next = { ...d, [sku]: { status, qty: Math.max(0, qty) } };
-        if (runId && status === "disetujui") {
-          apiUpdateRecommendation(runId, sku, { status, adjusted_qty: Math.max(0, qty) }).catch(
-            (err) => console.error("Gagal menyimpan perubahan jumlah:", err),
-          );
-        }
-        return next;
-      });
+  const statusOf = useCallback(
+    (item: PlanItem) => decisions[item.sku_id]?.status ?? item.status,
+    [decisions],
+  );
+
+  const mutateDecision = useCallback(
+    async (sku: string, status: ItemStatus, qty: number): Promise<boolean> => {
+      if (!runId || decisionInFlight.current.has(sku)) return false;
+
+      decisionInFlight.current.add(sku);
+      const normalizedQty = Math.max(0, Math.trunc(qty));
+      setDecisionPendingMap((current) => ({ ...current, [sku]: true }));
+      setDecisionErrorMap((current) => ({ ...current, [sku]: null }));
+
+      try {
+        const response = await apiUpdateRecommendation(runId, sku, {
+          status: status as RecommendationStatus,
+          adjusted_qty: normalizedQty,
+        });
+
+        setDecisions((current) => ({
+          ...current,
+          [sku]: {
+            status: response.status as ItemStatus,
+            qty: response.adjusted_qty ?? normalizedQty,
+            requiredCashRp: response.required_cash_rp,
+          },
+        }));
+        return true;
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : "Perubahan keputusan gagal disimpan.";
+        setDecisionErrorMap((current) => ({ ...current, [sku]: message }));
+        return false;
+      } finally {
+        decisionInFlight.current.delete(sku);
+        setDecisionPendingMap((current) => ({ ...current, [sku]: false }));
+      }
     },
     [runId],
   );
 
-  const setStatus = useCallback(
-    (sku: string, status: ItemStatus) => {
-      setDecisions((d) => {
-        const item = items.find((i) => i.sku_id === sku);
-        const qty = d[sku]?.qty ?? item?.recommended_qty ?? 0;
-        const next = { ...d, [sku]: { status, qty } };
-        if (runId) {
-          apiUpdateRecommendation(runId, sku, { status, adjusted_qty: qty }).catch((err) =>
-            console.error("Gagal menyimpan status keputusan:", err),
-          );
-        }
-        return next;
-      });
+  const setQty = useCallback(
+    async (sku: string, qty: number) => {
+      const item = items.find((candidate) => candidate.sku_id === sku);
+      if (!item) return false;
+      const currentStatus = statusOf(item);
+      const nextStatus: ItemStatus = currentStatus === "disetujui" ? "disetujui" : "diedit";
+      return mutateDecision(sku, nextStatus, qty);
     },
-    [runId, items],
+    [items, mutateDecision, statusOf],
   );
+
+  const setStatus = useCallback(
+    async (sku: string, status: ItemStatus) => {
+      const item = items.find((candidate) => candidate.sku_id === sku);
+      if (!item) return false;
+      return mutateDecision(sku, status, qtyOf(item));
+    },
+    [items, mutateDecision, qtyOf],
+  );
+
+  const decisionPending = useCallback(
+    (sku: string) => Boolean(decisionPendingMap[sku]),
+    [decisionPendingMap],
+  );
+
+  const decisionError = useCallback(
+    (sku: string) => decisionErrorMap[sku] ?? null,
+    [decisionErrorMap],
+  );
+
+  const hasPendingMutations = Object.values(decisionPendingMap).some(Boolean);
 
   const cart = useMemo(
     () =>
       items
-        .filter((i) => statusOf(i) === "disetujui")
-        .map((item) => {
-          const qty = qtyOf(item);
-          return { item, qty, subtotal: qty * unitCost(item) };
-        }),
-    [items, statusOf, qtyOf],
+        .filter((item) => statusOf(item) === "disetujui")
+        .map((item) => ({
+          item,
+          qty: qtyOf(item),
+          subtotal: cashOf(item),
+        })),
+    [cashOf, items, qtyOf, statusOf],
   );
-  const cartTotal = cart.reduce((s, c) => s + c.subtotal, 0);
+
+  const cartTotal = cart.reduce((sum, entry) => sum + entry.subtotal, 0);
   const overBudget = cartTotal > setup.budget;
 
-  const confirmOrder = useCallback(() => {
-    const store = availableStores.find((s) => s.store_id === setup.storeId);
-
-    if (runId) {
-      confirmDecisionRun(runId).catch((err) =>
-        console.error("Gagal konfirmasi ke server:", err),
-      );
+  const confirmOrder = useCallback(async () => {
+    if (!runId) throw new Error("Run belum tersedia untuk dikonfirmasi.");
+    if (hasPendingMutations) {
+      throw new Error("Tunggu perubahan SKU selesai disimpan sebelum konfirmasi.");
     }
+    if (confirmInFlight.current) throw new Error("Konfirmasi sedang diproses.");
 
-    const run: RunRow = {
-      id: runId ?? `RUN-${Date.now()}`,
-      date: setup.date,
-      storeId: setup.storeId,
-      storeName: store.name,
-      budget: setup.budget,
-      approvedCount: cart.length,
-      total: cartTotal,
-      status: "Selesai",
-      items: cart.map((c) => ({
-        sku_id: c.item.sku_id,
-        sku_name: c.item.sku_name,
-        qty: c.qty,
-        subtotal: c.subtotal,
-      })),
-    };
-    setRuns((r) => [run, ...r]);
-    return run;
-  }, [cart, cartTotal, setup.budget, setup.date, setup.storeId, runId]);
+    confirmInFlight.current = true;
+    setConfirmPending(true);
+    setConfirmError(null);
+
+    try {
+      const response = await confirmDecisionRun(runId);
+      const store = availableStores.find((candidate) => candidate.store_id === setup.storeId);
+      const run: RunRow = {
+        id: runId,
+        date: setup.date,
+        storeId: setup.storeId,
+        storeName: store?.store_name ?? setup.storeId,
+        budget: setup.budget,
+        approvedCount: response.confirmed_count,
+        total: response.total_cost_rp,
+        status: "Selesai",
+        items: cart.map((entry) => ({
+          sku_id: entry.item.sku_id,
+          sku_name: entry.item.sku_name,
+          qty: entry.qty,
+          subtotal: entry.subtotal,
+        })),
+      };
+
+      setRuns((current) => [run, ...current]);
+      return run;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Konfirmasi pesanan gagal.";
+      setConfirmError(message);
+      throw error;
+    } finally {
+      confirmInFlight.current = false;
+      setConfirmPending(false);
+    }
+  }, [availableStores, cart, hasPendingMutations, runId, setup]);
 
   const value: Ctx = {
     technical,
@@ -544,14 +728,18 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     jobStep,
     jobError,
     runId,
+    planMeta,
     runPlan,
     resetRun,
     items,
     decisions,
     qtyOf,
+    cashOf,
     statusOf,
     setQty,
     setStatus,
+    decisionPending,
+    decisionError,
     cart,
     cartTotal,
     overBudget,
@@ -559,9 +747,15 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     setOpenSku,
     runs,
     confirmOrder,
+    confirmPending,
+    confirmError,
     hasCompletedRun: runs.length > 0,
     lastRun: runs[0] ?? null,
     availableStores,
+    availableProducts,
+    productsLoading,
+    productsError,
+    hasPendingMutations,
   };
 
   return <RestockCtx.Provider value={value}>{children}</RestockCtx.Provider>;

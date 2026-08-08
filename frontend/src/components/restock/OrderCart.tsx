@@ -1,11 +1,11 @@
 import { Link } from "@tanstack/react-router";
 import { formatRupiah } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
-import { GoldButton, Meter, Num, SimDataBadge } from "./primitives";
+import { GoldButton, Meter, Num } from "./primitives";
 
 export function OrderCart() {
-  const { cart, cartTotal, setup, overBudget } = useRestock();
-  const sisa = setup.budget - cartTotal;
+  const { cart, cartTotal, hasPendingMutations, setup, overBudget } = useRestock();
+  const remaining = setup.budget - cartTotal;
 
   return (
     <aside className="sticky top-4 rounded-[6px] border border-border bg-card p-4">
@@ -16,15 +16,18 @@ export function OrderCart() {
 
       {cart.length === 0 ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          Belum ada item disetujui. Tekan "Setujui" pada rekomendasi untuk menambahkannya.
+          Belum ada item disetujui. Keputusan baru masuk keranjang setelah PATCH backend berhasil.
         </p>
       ) : (
         <ul className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-          {cart.map((c) => (
-            <li key={c.item.sku_id} className="flex items-baseline justify-between gap-2 text-xs">
-              <span className="min-w-0 flex-1 truncate">{c.item.sku_name}</span>
-              <Num className="text-muted-foreground">{c.qty}x</Num>
-              <Num>{formatRupiah(c.subtotal)}</Num>
+          {cart.map((entry) => (
+            <li
+              key={entry.item.sku_id}
+              className="flex items-baseline justify-between gap-2 text-xs"
+            >
+              <span className="min-w-0 flex-1 truncate">{entry.item.sku_name}</span>
+              <Num className="text-muted-foreground">{entry.qty}x</Num>
+              <Num>{formatRupiah(entry.subtotal)}</Num>
             </li>
           ))}
         </ul>
@@ -32,29 +35,35 @@ export function OrderCart() {
 
       <div className="mt-4 space-y-2 border-t border-border pt-3 text-sm">
         <div className="flex items-baseline justify-between">
-          <span className="text-muted-foreground">Total</span>
+          <span className="text-muted-foreground">Total tersimpan</span>
           <Num className="font-medium">{formatRupiah(cartTotal)}</Num>
         </div>
         <Meter value={cartTotal} max={setup.budget} over={overBudget} />
         <div className="flex items-baseline justify-between text-xs">
           <span className="text-muted-foreground">Sisa modal</span>
-          <Num className={overBudget ? "text-danger" : ""}>{formatRupiah(sisa)}</Num>
+          <Num className={overBudget ? "text-danger" : ""}>{formatRupiah(remaining)}</Num>
         </div>
         {overBudget ? (
           <p className="rounded-[6px] border border-danger/40 bg-danger-soft px-2 py-1 text-xs text-danger">
-            Total melebihi modal tersedia. Kurangi jumlah atau tolak sebagian item.
+            State lokal tidak konsisten dengan budget server. Muat ulang run sebelum konfirmasi.
+          </p>
+        ) : null}
+        {hasPendingMutations ? (
+          <p className="rounded-[6px] border border-info/30 bg-info-soft px-2 py-1 text-xs text-muted-foreground">
+            Menunggu perubahan SKU selesai disimpan di backend…
           </p>
         ) : null}
       </div>
 
-      <Link to="/konfirmasi" className="mt-4 block">
-        <GoldButton className="w-full" disabled={cart.length === 0}>
+      {cart.length === 0 || overBudget || hasPendingMutations ? (
+        <GoldButton className="mt-4 w-full" disabled>
           Lanjut ke konfirmasi
         </GoldButton>
-      </Link>
-      <div className="mt-3 flex justify-center">
-        <SimDataBadge />
-      </div>
+      ) : (
+        <Link to="/konfirmasi" className="mt-4 block">
+          <GoldButton className="w-full">Lanjut ke konfirmasi</GoldButton>
+        </Link>
+      )}
     </aside>
   );
 }
