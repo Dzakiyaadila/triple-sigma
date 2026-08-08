@@ -28,6 +28,31 @@ def request_json(path: str, method: str = "GET", payload: dict | None = None):
         raise RuntimeError(f"{method} {path} failed: {exc.code} {detail}") from exc
 
 
+def request_error(
+    path: str,
+    *,
+    method: str,
+    payload: dict | None,
+    expected_status: int,
+) -> str:
+    body = json.dumps(payload).encode() if payload is not None else None
+    request = Request(
+        f"{API_URL}{path}",
+        data=body,
+        method=method,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=30):
+            raise AssertionError(
+                f"{method} {path} unexpectedly succeeded"
+            )
+    except HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        assert exc.code == expected_status, detail
+        return detail
+
+
 def main() -> None:
     with urlopen(f"{SITE_URL}/health/ready", timeout=10) as response:
         readiness = json.load(response)
@@ -108,6 +133,23 @@ def main() -> None:
         method="POST",
     )
     assert confirmation["confirmed_count"] == 1
+
+    repeated_confirmation = request_json(
+        f"/decision-runs/{plan['run_id']}/confirm",
+        method="POST",
+    )
+    assert repeated_confirmation == confirmation
+
+    mutation_after_confirm = request_error(
+        f"/decision-runs/{plan['run_id']}/recommendations/{recommendation['sku_id']}",
+        method="PATCH",
+        payload={
+            "status": "ditolak",
+            "adjusted_qty": 0,
+        },
+        expected_status=400,
+    )
+    assert "sudah dikonfirmasi" in mutation_after_confirm
 
     history = request_json("/decision-runs/history")
     history_row = next(
