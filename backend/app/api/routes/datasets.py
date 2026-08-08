@@ -8,10 +8,11 @@ from fastapi import UploadFile, File
 from app.schemas.dataset import DatasetUploadResponse
 from app.services.dataset_upload_service import process_sales_upload
 from app.schemas.dataset import StoreOut
+from app.core.constants import DEMO_DATASET_ID
+from app.db.models import Product
+from app.schemas.dataset import SkuOption
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
-
-DEMO_DATASET_ID = "demo-retail-v1"
 
 
 @router.get("/demo/readiness", response_model=DatasetReadiness)
@@ -55,3 +56,19 @@ def get_dataset_stores(dataset_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Dataset tidak ditemukan atau tidak memiliki data toko")
 
     return db.scalars(select(Store).where(Store.store_id.in_(store_ids))).all()
+    
+@router.get("/{dataset_id}/skus", response_model=list[SkuOption])
+def get_dataset_skus(dataset_id: str, store_id: str, db: Session = Depends(get_db)):
+    if dataset_id == DEMO_DATASET_ID:
+        dataset_filter = DailySales.dataset_id.is_(None)
+    else:
+        dataset_filter = DailySales.dataset_id == dataset_id
+
+    sku_ids_query = select(func.distinct(DailySales.sku_id)).where(
+        DailySales.store_id == store_id, dataset_filter,
+    )
+    sku_ids = {row[0] for row in db.execute(sku_ids_query)}
+    if not sku_ids:
+        return []
+
+    return db.scalars(select(Product).where(Product.sku_id.in_(sku_ids))).all()
