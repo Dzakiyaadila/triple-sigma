@@ -38,6 +38,7 @@ Base path: `/api/v2`
 - `GET /datasets/{dataset_id}/stores`
 - `GET /datasets/{dataset_id}/products`
 - `POST /decision-runs`
+- `GET /decision-runs/history`
 - `GET /decision-runs/{run_id}/plan`
 - `PATCH /decision-runs/{run_id}/recommendations/{sku_id}`
 - `POST /decision-runs/{run_id}/confirm`
@@ -51,11 +52,14 @@ Operational endpoints:
 
 Planner errors are mapped explicitly: missing/invalid artifacts to 503, infeasible optimization to 422, and invalid decision inputs to 400.
 
+Decision runs are durable for R8-created records. PostgreSQL stores the original plan payload, plan summary, authoritative recommendation mutations, and idempotent confirmation metadata. Retrieval, mutation, confirmation, history, and CSV export rebuild from those rows rather than depending on process memory. Confirmed runs reject further mutation.
+
 ## Validation
 
 ```bash
 python -m pytest tests/ -q
 python -m app.ml.verify_release_artifacts
+python -m app.ml.verify_rc_contract
 python -c "from app.main import app; print('FastAPI import OK')"
 ```
 

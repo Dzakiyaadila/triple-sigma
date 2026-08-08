@@ -7,6 +7,7 @@ from sqlalchemy import create_engine
 from app.db.models import Base, Store
 from app.db.seed import seed
 from app.ml.verify_release_artifacts import verify_release_artifacts
+from app.ml.verify_rc_contract import verify_rc_contract
 
 
 def test_frozen_release_artifacts_are_complete_and_oracle_safe():
@@ -51,3 +52,11 @@ def test_manifest_does_not_list_oracle_features():
     manifest = json.loads(manifest_path.read_text())
 
     assert manifest["oracle_fields_used_as_features"] == []
+
+
+def test_rc_policy_artifact_oracle_and_claim_freeze_matches_code():
+    freeze = verify_rc_contract()
+
+    assert freeze["inference_contract"]["zero_budget_supported"] is True
+    assert freeze["inference_contract"]["calendar_payday_feature"] == "is_payday_week"
+    assert freeze["backtest_evidence"]["allowed_metric_claims"] == []
