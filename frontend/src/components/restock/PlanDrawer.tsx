@@ -1,28 +1,34 @@
 import { X } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { DATA_DATE, MODEL_VERSION, formatPct, formatRupiah, unitCost } from "@/lib/plan-data";
+import { formatPct, formatRupiah } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
 import { ConfidenceBadge, FlatBadge, Num, RiskBadge } from "./primitives";
 
 export function PlanDrawer() {
-  const { openSku, setOpenSku, items, qtyOf } = useRestock();
-  const item = items.find((i) => i.sku_id === openSku);
-  if (!item) return null;
-  const qty = qtyOf(item);
+  const {
+    cashOf,
+    items,
+    openSku,
+    planMeta,
+    qtyOf,
+    setOpenSku,
+    setup,
+  } = useRestock();
 
-  const data = Array.from({ length: 10 }, (_, i) => {
-    const drift = 1 + i * 0.03;
-    return {
-      hari: `H+${i + 1}`,
-      q10: Math.round(item.forecast_q10 * drift * 0.98),
-      q50: Math.round(item.forecast_q50 * drift),
-      q90: Math.round(item.forecast_q90 * drift * 1.02),
-    };
-  });
+  if (!openSku) return null;
+  const item = items.find((candidate) => candidate.sku_id === openSku);
+  if (!item) return null;
+
+  const qty = qtyOf(item);
+  const cash = cashOf(item);
+  const isAdjusted = qty !== item.recommended_qty;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-foreground/25" onClick={() => setOpenSku(null)} aria-hidden />
+      <div
+        className="absolute inset-0 bg-foreground/25"
+        onClick={() => setOpenSku(null)}
+        aria-hidden
+      />
       <aside className="relative flex h-full w-full flex-col overflow-y-auto border-l border-border bg-card md:w-[44%] md:min-w-[440px]">
         <div className="flex items-start gap-3 border-b border-border p-5">
           <button
@@ -47,40 +53,76 @@ export function PlanDrawer() {
 
         <div className="space-y-6 p-5">
           <section>
-            <h3 className="mb-2 text-sm font-medium">Perkiraan permintaan (Q10/Q50/Q90)</h3>
-            <div className="h-52 rounded-[6px] border border-border p-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 6, right: 6, bottom: 0, left: -18 }}>
-                  <CartesianGrid stroke="var(--border)" vertical={false} />
-                  <XAxis dataKey="hari" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={{ stroke: "var(--border)" }} />
-                  <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }} />
-                  <Area type="monotone" dataKey="q90" stroke="var(--warn)" fill="var(--warn)" fillOpacity={0.12} />
-                  <Area type="monotone" dataKey="q50" stroke="var(--accent-gold)" fill="var(--accent-gold)" fillOpacity={0.18} />
-                  <Area type="monotone" dataKey="q10" stroke="var(--safe)" fill="var(--safe)" fillOpacity={0.12} />
-                </AreaChart>
-              </ResponsiveContainer>
+            <h3 className="text-sm font-medium">
+              Perkiraan permintaan kumulatif H+{setup.horizon}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Model produksi memprediksi kuantil kumulatif langsung. Sistem tidak membuat
+              trajektori harian sintetis dari angka kumulatif ini.
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="rounded-[6px] border border-border p-3">
+                <p className="text-xs text-muted-foreground">Q10</p>
+                <Num className="mt-1 block text-lg font-semibold">
+                  {item.forecast_q10.toFixed(1)}
+                </Num>
+                <p className="text-[11px] text-muted-foreground">unit</p>
+              </div>
+              <div className="rounded-[6px] border border-accent-gold/40 bg-accent-gold-soft p-3">
+                <p className="text-xs text-muted-foreground">Q50</p>
+                <Num className="mt-1 block text-lg font-semibold">
+                  {item.forecast_q50.toFixed(1)}
+                </Num>
+                <p className="text-[11px] text-muted-foreground">unit</p>
+              </div>
+              <div className="rounded-[6px] border border-border p-3">
+                <p className="text-xs text-muted-foreground">Q90</p>
+                <Num className="mt-1 block text-lg font-semibold">
+                  {item.forecast_q90.toFixed(1)}
+                </Num>
+                <p className="text-[11px] text-muted-foreground">unit</p>
+              </div>
             </div>
           </section>
 
           <section>
             <h3 className="mb-2 text-sm font-medium">Posisi inventori</h3>
-            <div className="rounded-[6px] border border-border p-4">
-              <div className="flex h-3 w-full overflow-hidden rounded-[6px] bg-secondary">
-                <div className="bg-safe" style={{ width: `${(item.inventory_on_hand / (item.effective_inventory + qty)) * 100}%` }} />
-                <div className="bg-info" style={{ width: `${(item.inventory_on_order / (item.effective_inventory + qty)) * 100}%` }} />
-                <div className="bg-accent-gold" style={{ width: `${(qty / (item.effective_inventory + qty)) * 100}%` }} />
+            <div className="grid gap-2 rounded-[6px] border border-border p-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-muted-foreground">Stok di tangan</p>
+                <Num className="mt-1 block text-base font-medium">
+                  {item.inventory_on_hand.toFixed(1)} unit
+                </Num>
               </div>
-              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                <p>Hari ini · stok di rak <Num className="text-foreground">{item.inventory_on_hand} unit</Num></p>
-                <p>H+<Num>{Math.max(1, item.supplier_p90_lead_time_days - 2)}</Num> · stok dalam perjalanan tiba <Num className="text-foreground">{item.inventory_on_order} unit</Num></p>
-                <p>H+<Num>{item.supplier_p90_lead_time_days}</Num> · pesanan baru tiba <Num className="text-foreground">{qty} unit</Num></p>
+              <div>
+                <p className="text-xs text-muted-foreground">PO outstanding</p>
+                <Num className="mt-1 block text-base font-medium">
+                  {item.inventory_on_order.toFixed(1)} unit
+                </Num>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Posisi efektif</p>
+                <Num className="mt-1 block text-base font-medium">
+                  {item.effective_inventory.toFixed(1)} unit
+                </Num>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Sudah memasukkan probabilitas kedatangan PO existing.
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  {isAdjusted ? "Jumlah dipilih" : "Rekomendasi baru"}
+                </p>
+                <Num className="mt-1 block text-base font-medium">{qty} unit</Num>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  P90 lead time supplier {item.supplier_p90_lead_time_days.toFixed(1)} hari.
+                </p>
               </div>
             </div>
           </section>
 
           <section>
-            <h3 className="mb-2 text-sm font-medium">Sebelum vs sesudah pesan</h3>
+            <h3 className="mb-2 text-sm font-medium">Sebelum vs sesudah rekomendasi model</h3>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-xs text-muted-foreground">
@@ -92,13 +134,19 @@ export function PlanDrawer() {
               <tbody>
                 <tr className="border-b border-border">
                   <td className="py-2">Risiko kehabisan</td>
-                  <td className="num py-2 text-right">{formatPct(item.stockout_risk_before)}</td>
-                  <td className="num py-2 text-right text-safe">{formatPct(item.stockout_risk_after)}</td>
+                  <td className="num py-2 text-right">
+                    {formatPct(item.stockout_risk_before)}
+                  </td>
+                  <td className="num py-2 text-right text-safe">
+                    {formatPct(item.stockout_risk_after)}
+                  </td>
                 </tr>
                 <tr className="border-b border-border">
                   <td className="py-2">Margin berisiko (LMAR)</td>
                   <td className="num py-2 text-right">{formatRupiah(item.lmar_before_rp)}</td>
-                  <td className="num py-2 text-right text-safe">{formatRupiah(item.lmar_after_rp)}</td>
+                  <td className="num py-2 text-right text-safe">
+                    {formatRupiah(item.lmar_after_rp)}
+                  </td>
                 </tr>
                 <tr>
                   <td className="py-2">Modal terkunci (WCAR)</td>
@@ -107,6 +155,13 @@ export function PlanDrawer() {
                 </tr>
               </tbody>
             </table>
+            {isAdjusted ? (
+              <p className="mt-2 rounded-[6px] border border-info/30 bg-info-soft/50 px-3 py-2 text-xs text-muted-foreground">
+                Nilai “sesudah” dihitung untuk rekomendasi awal {item.recommended_qty} unit.
+                Jumlah manual {qty} unit sudah tersimpan di server, tetapi kurva risiko tidak
+                dihitung ulang pada endpoint edit saat ini.
+              </p>
+            ) : null}
           </section>
 
           <section className="rounded-[6px] border border-border p-4">
@@ -116,7 +171,9 @@ export function PlanDrawer() {
               <FlatBadge tone={item.supplier_on_time_probability >= 0.85 ? "safe" : "gold"}>
                 Tepat waktu {formatPct(item.supplier_on_time_probability)}
               </FlatBadge>
-              <FlatBadge>P90 lead time {item.supplier_p90_lead_time_days} hari</FlatBadge>
+              <FlatBadge>
+                P90 lead time {item.supplier_p90_lead_time_days.toFixed(1)} hari
+              </FlatBadge>
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{item.supplier_note}</p>
           </section>
@@ -130,21 +187,29 @@ export function PlanDrawer() {
               <h3 className="text-sm font-medium">Kenapa bukan lebih banyak?</h3>
               <p className="mt-1 text-sm text-muted-foreground">{item.reason_not_more}</p>
             </div>
+            {isAdjusted ? (
+              <p className="text-xs text-muted-foreground">
+                Penjelasan di atas merujuk rekomendasi model awal {item.recommended_qty} unit.
+              </p>
+            ) : null}
             <p className="text-sm text-muted-foreground">
-              Total biaya pesanan ini <Num className="text-foreground">{formatRupiah(qty * unitCost(item))}</Num>.
+              Biaya keputusan saat ini{" "}
+              <Num className="text-foreground">{formatRupiah(cash)}</Num>.
             </p>
           </section>
 
           {item.warnings.length ? (
             <section className="rounded-[6px] border border-warn/40 bg-warn-soft p-3 text-xs">
-              {item.warnings.map((w) => (
-                <p key={w}>{w}</p>
+              {item.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
               ))}
             </section>
           ) : null}
 
           <div className="flex justify-end pt-2">
-            <FlatBadge>{MODEL_VERSION} · Data {DATA_DATE}</FlatBadge>
+            <FlatBadge>
+              {planMeta?.modelVersion ?? "Model belum tersedia"} · Keputusan {setup.date}
+            </FlatBadge>
           </div>
         </div>
       </aside>

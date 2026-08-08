@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { Home, History, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DATA_DATE } from "@/lib/plan-data";
 import { useRestock } from "@/lib/restock-store";
 import { PlanDrawer } from "./PlanDrawer";
 import { Switch } from "@/components/ui/switch";
@@ -90,7 +89,7 @@ function WizardProgress({ path }: { path: string }) {
 }
 
 function TopBar() {
-  const { technical, setTechnical } = useRestock();
+  const { dataset, planMeta, setup, technical, setTechnical } = useRestock();
   return (
     <div className="flex items-center gap-3 border-b border-border bg-card/95 px-4 py-2.5 backdrop-blur lg:px-6">
       <Link to="/" className="font-display text-base font-semibold tracking-tight">
@@ -100,9 +99,12 @@ function TopBar() {
         Asisten keputusan restock
       </span>
       <div className="ml-auto flex items-center gap-3">
-        <span className="hidden rounded-[6px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
-          Data per <span className="num">{DATA_DATE}</span>
-        </span>
+        {dataset ? (
+          <span className="hidden rounded-[6px] border border-border bg-muted px-2 py-1 text-[11px] text-muted-foreground sm:inline">
+            {planMeta ? "Keputusan" : "Data s.d."}{" "}
+            <span className="num">{planMeta ? setup.date : (dataset.maxDate ?? "—")}</span>
+          </span>
+        ) : null}
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <FlatBadge tone="info">Teknis</FlatBadge>
           <Switch
