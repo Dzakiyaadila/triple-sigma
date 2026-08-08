@@ -89,11 +89,32 @@ def main() -> None:
     assert mutation["status"] == "disetujui"
     assert mutation["required_cash_rp"] > 0
 
+    persisted_plan = request_json(
+        f"/decision-runs/{plan['run_id']}/plan"
+    )
+    persisted_recommendation = next(
+        item
+        for item in persisted_plan["recommendations"]
+        if item["sku_id"] == recommendation["sku_id"]
+    )
+    assert persisted_recommendation["status"] == "disetujui"
+    assert (
+        persisted_recommendation["required_cash_rp"]
+        == mutation["required_cash_rp"]
+    )
+
     confirmation = request_json(
         f"/decision-runs/{plan['run_id']}/confirm",
         method="POST",
     )
     assert confirmation["confirmed_count"] == 1
+
+    history = request_json("/decision-runs/history")
+    history_row = next(
+        item for item in history if item["id"] == plan["run_id"]
+    )
+    assert history_row["approved_count"] == 1
+    assert history_row["total"] == confirmation["total_cost_rp"]
 
     with urlopen(
         f"{API_URL}/decision-runs/{plan['run_id']}/export.csv",

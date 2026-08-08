@@ -24,7 +24,7 @@ export const Route = createFileRoute("/riwayat")({
 });
 
 function Riwayat() {
-  const { runs } = useRestock();
+  const { historyError, historyLoading, runs } = useRestock();
   const [openId, setOpenId] = useState<string | null>(null);
   const open = runs.find((r) => r.id === openId);
 
@@ -34,7 +34,17 @@ function Riwayat() {
         title="Riwayat keputusan"
         desc="Ringkasan run restock yang pernah dikonfirmasi"
       />
-      {runs.length === 0 ? (
+      {historyError ? (
+        <p className="mb-4 rounded-[6px] border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
+          Riwayat server tidak dapat dimuat: {historyError}
+        </p>
+      ) : null}
+      {historyLoading && runs.length === 0 ? (
+        <EmptyState
+          title="Memuat riwayat"
+          desc="Mengambil run yang sudah dikonfirmasi dari backend."
+        />
+      ) : runs.length === 0 ? (
         <EmptyState
           title="Belum ada riwayat"
           desc="Selesaikan satu run restock untuk melihat catatannya di sini."

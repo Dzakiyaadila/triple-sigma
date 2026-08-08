@@ -108,7 +108,7 @@ class DecisionRun(Base):
     constraints_json = Column(JSON)
     model_version = Column(String)
     data_hash = Column(String)
-    status = Column(String, default="queued")   # queued/running/completed/failed
+    status = Column(String, default="queued")   # queued/running/completed/failed/confirmed
     runtime_ms = Column(Integer)
     created_at = Column(DateTime)
 

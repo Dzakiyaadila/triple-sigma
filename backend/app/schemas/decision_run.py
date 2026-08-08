@@ -94,12 +94,12 @@ class DecisionRunRequest(BaseModel):
 
 class DecisionRunStatusResponse(BaseModel):
     run_id: str
-    status: Literal["queued", "running", "completed", "failed"]
+    status: Literal["queued", "running", "completed", "failed", "confirmed"]
 
 
 class RecommendationUpdateRequest(BaseModel):
     status: RecommendationStatus
-    adjusted_qty: Optional[int] = None
+    adjusted_qty: Optional[int] = Field(default=None, ge=0)
     user_note: Optional[str] = None
 
 
@@ -116,3 +116,22 @@ class ConfirmResponse(BaseModel):
     confirmed_count: int
     confirmed_at: str
     total_cost_rp: float
+
+
+class DecisionHistoryItem(BaseModel):
+    sku_id: str
+    sku_name: str
+    qty: int
+    subtotal: float
+
+
+class DecisionHistoryRow(BaseModel):
+    id: str
+    date: str
+    store_id: str
+    store_name: str
+    budget: float
+    approved_count: int
+    total: float
+    status: Literal["Selesai"]
+    items: list[DecisionHistoryItem]

@@ -1,17 +1,27 @@
 import csv
 import io
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from app.services.plan_cache import plans_cache
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.services.decision_run_service import (
+    DecisionRunNotFoundError,
+    PersistedPlanError,
+    get_persisted_plan,
+)
 
 router = APIRouter(prefix="/decision-runs", tags=["export"])
 
 
 @router.get("/{run_id}/export.csv")
-def export_csv(run_id: str):
-    plan = plans_cache.get(run_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Run tidak ditemukan")
+def export_csv(run_id: str, db: Session = Depends(get_db)):
+    try:
+        plan = get_persisted_plan(db, run_id)
+    except DecisionRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PersistedPlanError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     approved = [r for r in plan["recommendations"] if r["status"] == "disetujui"]
 
