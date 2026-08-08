@@ -318,6 +318,21 @@ def build_retail_snapshot(
         "unit_price_rp",
         "unit_price",
     )
+    shelf_life_col = _column(
+        products_table,
+        "shelf_life_days",
+        required=False,
+    )
+    is_perishable_col = _column(
+        products_table,
+        "is_perishable",
+        required=False,
+    )
+    lead_time_default_col = _column(
+        products_table,
+        "lead_time_days_default",
+        required=False,
+    )
 
     product_statement = select(
         product_sku_col,
@@ -327,6 +342,13 @@ def build_retail_snapshot(
         unit_cost_col,
         unit_price_col,
     )
+    for optional_column in (
+        shelf_life_col,
+        is_perishable_col,
+        lead_time_default_col,
+    ):
+        if optional_column is not None:
+            product_statement = product_statement.add_columns(optional_column)
 
     if dataset_id != "demo-retail-v1":
         product_statement = product_statement.where(
@@ -356,6 +378,27 @@ def build_retail_snapshot(
             ),
             unit_price_rp=_to_float(
                 _mapping_value(row, unit_price_col)
+            ),
+            shelf_life_days=max(
+                1.0,
+                _to_float(
+                    _mapping_value(row, shelf_life_col),
+                    default=365.0,
+                ),
+            ),
+            is_perishable=_to_bool(
+                _mapping_value(row, is_perishable_col, False)
+            ),
+            lead_time_days_default=(
+                max(
+                    1.0,
+                    _to_float(
+                        _mapping_value(row, lead_time_default_col),
+                        default=1.0,
+                    ),
+                )
+                if _mapping_value(row, lead_time_default_col) is not None
+                else None
             ),
         )
         for row in product_rows

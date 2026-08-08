@@ -38,6 +38,9 @@ class ProductSnapshot(StrictFrozenModel):
     supplier_id: str
     unit_cost_rp: float = Field(ge=0)
     unit_price_rp: float = Field(ge=0)
+    shelf_life_days: float = Field(default=365.0, gt=0)
+    is_perishable: bool = False
+    lead_time_days_default: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def validate_price(self) -> "ProductSnapshot":
