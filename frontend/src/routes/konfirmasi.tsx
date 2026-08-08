@@ -18,7 +18,8 @@ export const Route = createFileRoute("/konfirmasi")({
       { title: "Konfirmasi & Ekspor — RestockIQ" },
       {
         name: "description",
-        content: "Tinjau item disetujui, validasi terhadap modal, lalu ekspor atau konfirmasi pesanan restock.",
+        content:
+          "Tinjau item disetujui, validasi terhadap modal, lalu ekspor atau konfirmasi pesanan restock.",
       },
       { property: "og:title", content: "Konfirmasi & Ekspor — RestockIQ" },
       {
@@ -74,11 +75,7 @@ function Konfirmasi() {
       <EmptyState
         title="Belum ada item disetujui"
         desc="Setujui minimal satu rekomendasi pada Rencana Restock."
-        action={
-          <GoldButton onClick={() => navigate({ to: "/rencana" })}>
-            Buka rencana
-          </GoldButton>
-        }
+        action={<GoldButton onClick={() => navigate({ to: "/rencana" })}>Buka rencana</GoldButton>}
       />
     );
   }
@@ -104,9 +101,7 @@ function Konfirmasi() {
               <tr key={entry.item.sku_id} className="border-b border-border last:border-0">
                 <td className="px-4 py-2">{entry.item.sku_name}</td>
                 <td className="num px-4 py-2 text-right">{entry.qty}</td>
-                <td className="num px-4 py-2 text-right">
-                  {formatRupiah(entry.subtotal)}
-                </td>
+                <td className="num px-4 py-2 text-right">{formatRupiah(entry.subtotal)}</td>
               </tr>
             ))}
           </tbody>
@@ -127,7 +122,8 @@ function Konfirmasi() {
 
       {overBudget ? (
         <p className="mt-3 rounded-[6px] border border-danger/40 bg-danger-soft px-3 py-2 text-sm text-danger">
-          State lokal melebihi budget. Kembali ke Rencana Restock dan sinkronkan keputusan sebelum konfirmasi.
+          State lokal melebihi budget. Kembali ke Rencana Restock dan sinkronkan keputusan sebelum
+          konfirmasi.
         </p>
       ) : null}
 

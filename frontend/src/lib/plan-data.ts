@@ -1,14 +1,7 @@
 export type RiskLevel = "aman" | "sedang" | "tinggi";
 export type Confidence = "tinggi" | "sedang" | "rendah";
-export type ItemStatus =
-  | "belum_diputuskan"
-  | "disetujui"
-  | "diedit"
-  | "ditolak";
-export type PolicyStyle =
-  | "lindungi_kas"
-  | "seimbang"
-  | "lindungi_ketersediaan";
+export type ItemStatus = "belum_diputuskan" | "disetujui" | "diedit" | "ditolak";
+export type PolicyStyle = "lindungi_kas" | "seimbang" | "lindungi_ketersediaan";
 
 export interface PlanItem {
   sku_id: string;

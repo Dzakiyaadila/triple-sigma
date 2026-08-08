@@ -1,5 +1,4 @@
-const API_BASE =
-  import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v2";
+const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000/api/v2";
 
 interface FastApiValidationError {
   loc?: unknown[];
@@ -13,10 +12,7 @@ interface ApiErrorBody {
   };
 }
 
-async function request<T>(
-  path: string,
-  options?: RequestInit,
-): Promise<T> {
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { "Content-Type": "application/json" },
     ...options,
@@ -24,8 +20,7 @@ async function request<T>(
 
   if (!res.ok) {
     const body: unknown = await res.json().catch(() => null);
-    const message =
-      extractErrorMessage(body) ?? `Request gagal (${res.status})`;
+    const message = extractErrorMessage(body) ?? `Request gagal (${res.status})`;
 
     throw new Error(message);
   }
@@ -91,10 +86,7 @@ export interface ForecastPoint {
   q90: number;
 }
 
-export type PolicyPreset =
-  | "lindungi_kas"
-  | "seimbang"
-  | "lindungi_ketersediaan";
+export type PolicyPreset = "lindungi_kas" | "seimbang" | "lindungi_ketersediaan";
 
 export interface ApiRecommendation {
   sku_id: string;
@@ -164,11 +156,7 @@ export function createDecisionRun(payload: CreateDecisionRunPayload) {
   });
 }
 
-export type RecommendationStatus =
-  | "belum_diputuskan"
-  | "disetujui"
-  | "diedit"
-  | "ditolak";
+export type RecommendationStatus = "belum_diputuskan" | "disetujui" | "diedit" | "ditolak";
 
 export interface RecommendationUpdateResponse {
   sku_id: string;
@@ -184,13 +172,10 @@ export function updateRecommendation(
   skuId: string,
   payload: { status: RecommendationStatus; adjusted_qty?: number },
 ) {
-  return request<RecommendationUpdateResponse>(
-    `/decision-runs/${runId}/recommendations/${skuId}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    },
-  );
+  return request<RecommendationUpdateResponse>(`/decision-runs/${runId}/recommendations/${skuId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
 }
 
 export interface ConfirmDecisionRunResponse {
@@ -263,11 +248,7 @@ export interface ProductOption {
   category?: string | null;
 }
 
-export function getDatasetProducts(
-  datasetId: string,
-  storeId: string,
-  decisionDate: string,
-) {
+export function getDatasetProducts(datasetId: string, storeId: string, decisionDate: string) {
   const query = new URLSearchParams({
     store_id: storeId,
     decision_date: decisionDate,

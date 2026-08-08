@@ -41,9 +41,7 @@ export function OrderCart() {
         <Meter value={cartTotal} max={setup.budget} over={overBudget} />
         <div className="flex items-baseline justify-between text-xs">
           <span className="text-muted-foreground">Sisa modal</span>
-          <Num className={overBudget ? "text-danger" : ""}>
-            {formatRupiah(remaining)}
-          </Num>
+          <Num className={overBudget ? "text-danger" : ""}>{formatRupiah(remaining)}</Num>
         </div>
         {overBudget ? (
           <p className="rounded-[6px] border border-danger/40 bg-danger-soft px-2 py-1 text-xs text-danger">
