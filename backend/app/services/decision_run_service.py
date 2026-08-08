@@ -15,6 +15,8 @@ def run_decision(
     budget_rp: float,
     policy_preset: str = "seimbang",
     horizon_days: int = 7,
+    min_fill_rate: float | None = None,
+    protected_sku_ids: list[str] | None = None,
 ) -> dict:
     decision_day = date.fromisoformat(decision_date)
 
@@ -54,6 +56,8 @@ def run_decision(
         budget_rp=budget_rp,
         policy_preset=policy_preset,
         horizon_days=horizon_days,
+        protected_sku_ids=protected_sku_ids,
+        min_fill_rate=min_fill_rate,
     )
     plan["data_hash"] = snapshot.data_hash()
 

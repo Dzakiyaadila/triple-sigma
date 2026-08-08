@@ -153,7 +153,9 @@ export interface CreateDecisionRunPayload {
   decision_date: string;
   budget_rp: number;
   horizon_days: number;
-  policy_preset: PolicyPreset;
+  policy_preset: string;
+  min_fill_rate?: number | null;
+  protected_sku_ids?: string[];
 }
 
 export function createDecisionRun(payload: CreateDecisionRunPayload) {
@@ -232,4 +234,16 @@ export interface StoreOption {
 
 export function getDatasetStores(datasetId: string) {
   return request<StoreOption[]>(`/datasets/${datasetId}/stores`);
+}
+
+export interface SkuOption {
+  sku_id: string;
+  product_name: string;
+  category: string;
+}
+
+export function getDatasetSkus(datasetId: string, storeId: string) {
+  return request<SkuOption[]>(
+    `/datasets/${datasetId}/skus?store_id=${encodeURIComponent(storeId)}`,
+  );
 }
