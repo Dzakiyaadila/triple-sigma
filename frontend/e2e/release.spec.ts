@@ -146,7 +146,5 @@ test("authoritative workflow survives races and failures without fake state", as
 
   await page.getByRole("button", { name: "Atur Keputusan" }).click();
   await page.getByLabel("Modal restock tersedia").fill("9000000");
-  await expect(
-    page.getByRole("button", { name: "3 Rencana Restock", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "3 Rencana Restock", exact: true })).toBeDisabled();
 });

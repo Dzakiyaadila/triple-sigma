@@ -25,13 +25,28 @@ DNS must resolve to the host and inbound ports 80/443 must be open.
 
 ## 2. Validate source
 
+Create the pinned backend environment once. The collector auto-detects this
+environment even when the collector itself is launched with another system
+Python:
+
+```bash
+cd backend
+test -x .venv/bin/python || python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cd ..
+```
+
+The collector rejects Python versions other than 3.12 and environments missing
+the pinned backend dependencies. `RELEASE_BACKEND_PYTHON` may point to an
+equivalent Python 3.12 environment.
+
 ```bash
 cd backend
 export DATABASE_URL="${RELEASE_TEST_DATABASE_URL:-sqlite+pysqlite:///:memory:}"
-python -m pytest tests/ -q
-python -m app.ml.verify_release_artifacts
-python -m app.ml.verify_rc_contract
-python -c "from app.main import app; print('FastAPI import OK')"
+.venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m app.ml.verify_release_artifacts
+.venv/bin/python -m app.ml.verify_rc_contract
+.venv/bin/python -c "from app.main import app; print('FastAPI import OK')"
 
 cd ../frontend
 npm ci
@@ -117,6 +132,10 @@ The default evidence directory is outside the repository. It contains commit
 metadata, command logs, a machine-readable summary, TLS/certificate and
 readiness evidence, plus Playwright screenshots/traces/videos and its HTML
 report. Keep the entire directory unchanged with the release record.
+
+The collector stops at preflight before expensive gates when the worktree is
+dirty or no valid backend Python 3.12 environment is available. Generated patch
+files must be moved outside the repository before evidence collection.
 
 `--skip-docker` and `--skip-browser` exist for diagnosis only. Either flag
 forces the pack status to `failed`, as does a dirty worktree. `--allow-http`

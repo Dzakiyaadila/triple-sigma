@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import ssl
 import subprocess
@@ -14,6 +15,15 @@ from urllib.request import urlopen
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+BACKEND_REQUIRED_MODULES = (
+    "fastapi",
+    "lightgbm",
+    "pandas",
+    "pytest",
+    "scipy",
+    "sklearn",
+    "sqlalchemy",
+)
 
 
 def _timestamp() -> str:
@@ -36,18 +46,24 @@ def _run(
     env: dict[str, str] | None = None,
 ) -> dict:
     started = datetime.now(timezone.utc)
-    completed = subprocess.run(
-        command,
-        cwd=cwd,
-        env={**os.environ, **(env or {})},
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=cwd,
+            env={**os.environ, **(env or {})},
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        output = completed.stdout
+        return_code = completed.returncode
+    except OSError as exc:
+        output = f"{type(exc).__name__}: {exc}\n"
+        return_code = 127
     finished = datetime.now(timezone.utc)
     log_path = output_dir / f"{name}.log"
-    log_path.write_text(completed.stdout, encoding="utf-8")
+    log_path.write_text(output, encoding="utf-8")
     return {
         "name": name,
         "command": command,
@@ -55,10 +71,105 @@ def _run(
         "started_at": started.isoformat(),
         "finished_at": finished.isoformat(),
         "duration_seconds": round((finished - started).total_seconds(), 3),
-        "exit_code": completed.returncode,
-        "status": "passed" if completed.returncode == 0 else "failed",
+        "exit_code": return_code,
+        "status": "passed" if return_code == 0 else "failed",
         "log": log_path.name,
     }
+
+
+def _probe_backend_python(executable: str) -> tuple[bool, str]:
+    imports = ", ".join(repr(module) for module in BACKEND_REQUIRED_MODULES)
+    probe = (
+        "import importlib, sys; "
+        "assert sys.version_info[:2] == (3, 12), "
+        "f'expected Python 3.12, got {sys.version.split()[0]}'; "
+        f"[importlib.import_module(name) for name in ({imports},)]; "
+        "print(sys.executable); print(sys.version.split()[0])"
+    )
+    try:
+        completed = subprocess.run(
+            [executable, "-c", probe],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+    except OSError as exc:
+        return False, f"{type(exc).__name__}: {exc}"
+    return completed.returncode == 0, completed.stdout.strip()
+
+
+def _resolve_backend_python(
+    *,
+    repo_root: Path = REPO_ROOT,
+    environ: dict[str, str] | None = None,
+    current_executable: str = sys.executable,
+) -> tuple[str, str]:
+    environment = os.environ if environ is None else environ
+    explicit = environment.get("RELEASE_BACKEND_PYTHON")
+    if explicit:
+        candidates = [explicit]
+    else:
+        venv_binary = Path("Scripts/python.exe") if os.name == "nt" else Path("bin/python")
+        candidates = [
+            str(repo_root / "backend" / ".venv" / venv_binary),
+            str(repo_root / "backend" / "venv" / venv_binary),
+            str(repo_root / ".venv" / venv_binary),
+            str(repo_root / "venv" / venv_binary),
+            current_executable,
+        ]
+        python312 = shutil.which("python3.12")
+        if python312:
+            candidates.append(python312)
+
+    diagnostics: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        normalized = str(Path(candidate).expanduser())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        passed, detail = _probe_backend_python(normalized)
+        if passed:
+            return normalized, detail
+        diagnostics.append(f"- {normalized}: {detail or 'probe failed'}")
+
+    attempted = "\n".join(diagnostics)
+    raise RuntimeError(
+        "No usable RestockIQ backend Python environment was found. The release "
+        "gates require Python 3.12 with backend/requirements.txt installed.\n"
+        "Create it with:\n"
+        "  cd backend\n"
+        "  python3.12 -m venv .venv\n"
+        "  .venv/bin/python -m pip install -r requirements.txt\n"
+        "Or set RELEASE_BACKEND_PYTHON to that interpreter.\n"
+        f"Attempted interpreters:\n{attempted}"
+    )
+
+
+def _write_preflight_failure(
+    *,
+    output_dir: Path,
+    metadata: dict,
+    failure: str,
+    log_name: str,
+    detail: str,
+) -> None:
+    (output_dir / log_name).write_text(detail.rstrip() + "\n", encoding="utf-8")
+    _write_json(output_dir / "metadata.json", metadata)
+    _write_json(
+        output_dir / "https.json",
+        {"status": "not_run", "reason": "Source preflight did not pass."},
+    )
+    _write_json(
+        output_dir / "summary.json",
+        {
+            "status": "failed",
+            "failures": [failure],
+            "commands": [],
+            "https": {"status": "not_run"},
+        },
+    )
 
 
 def _git_value(*args: str) -> str:
@@ -150,6 +261,46 @@ def main() -> int:
         "allow_http": args.allow_http,
         "source_clean": not bool(source_status.strip()),
     }
+
+    if not metadata["source_clean"]:
+        _write_preflight_failure(
+            output_dir=output_dir,
+            metadata=metadata,
+            failure="source_worktree_dirty",
+            log_name="00_source_preflight.log",
+            detail=(
+                "Release evidence requires a clean tracked and untracked source tree.\n"
+                "Move generated patches/evidence outside the repository and commit or "
+                f"revert source changes before rerunning.\n\n{source_status}"
+            ),
+        )
+        print(f"Evidence directory: {output_dir}")
+        print("Evidence status: failed")
+        print("Failed gate: source_worktree_dirty")
+        print(source_status.rstrip())
+        return 1
+
+    try:
+        backend_python, backend_python_probe = _resolve_backend_python()
+    except RuntimeError as exc:
+        metadata["backend_python"] = None
+        metadata["backend_python_probe"] = None
+        metadata["backend_python_error"] = str(exc)
+        _write_preflight_failure(
+            output_dir=output_dir,
+            metadata=metadata,
+            failure="backend_environment_invalid",
+            log_name="00_backend_environment.log",
+            detail=str(exc),
+        )
+        print(f"Evidence directory: {output_dir}")
+        print("Evidence status: failed")
+        print("Failed gate: backend_environment_invalid")
+        print(exc)
+        return 1
+
+    metadata["backend_python"] = backend_python
+    metadata["backend_python_probe"] = backend_python_probe
     _write_json(output_dir / "metadata.json", metadata)
 
     backend_test_env = {
@@ -174,26 +325,26 @@ def main() -> int:
         ),
         (
             "03_backend_tests",
-            [sys.executable, "-m", "pytest", "tests/", "-q"],
+            [backend_python, "-m", "pytest", "tests/", "-q"],
             REPO_ROOT / "backend",
             backend_test_env,
         ),
         (
             "04_artifact_verifier",
-            [sys.executable, "-m", "app.ml.verify_release_artifacts"],
+            [backend_python, "-m", "app.ml.verify_release_artifacts"],
             REPO_ROOT / "backend",
             backend_test_env,
         ),
         (
             "05_rc_contract",
-            [sys.executable, "-m", "app.ml.verify_rc_contract"],
+            [backend_python, "-m", "app.ml.verify_rc_contract"],
             REPO_ROOT / "backend",
             backend_test_env,
         ),
         (
             "06_fastapi_import",
             [
-                sys.executable,
+                backend_python,
                 "-c",
                 "from app.main import app; print('FastAPI import OK')",
             ],
@@ -322,6 +473,9 @@ def main() -> int:
     print(f"Evidence status: {summary['status']}")
     if failures:
         print("Failed gates:", ", ".join(failures))
+        for result in results:
+            if result["status"] == "failed":
+                print(f"- {result['name']}: {output_dir / result['log']}")
         return 1
     return 0
 
