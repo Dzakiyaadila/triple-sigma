@@ -169,7 +169,6 @@ function AturKeputusan() {
               )}
             />
           </button>
-
           {advancedOpen ? (
             <div className="space-y-4 border-t border-border p-4">
               <div className="rounded-[6px] border border-border p-4 opacity-60">
