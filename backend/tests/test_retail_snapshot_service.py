@@ -62,6 +62,7 @@ def snapshot_db():
     sales = Table(
         "fact_daily_sales",
         metadata,
+        Column("dataset_id", String, nullable=True),
         Column("store_id", String, nullable=False),
         Column("sku_id", String, nullable=False),
         Column("sales_date", Date, nullable=False),
@@ -91,6 +92,7 @@ def snapshot_db():
             String,
             primary_key=True,
         ),
+        Column("dataset_id", String, nullable=True),
         Column("store_id", String, nullable=False),
         Column("sku_id", String, nullable=False),
         Column("supplier_id", String, nullable=False),
@@ -254,12 +256,14 @@ def snapshot_db():
 def test_snapshot_applies_temporal_cutoff(snapshot_db):
     snapshot = build_retail_snapshot(
         snapshot_db,
+        dataset_id="demo-retail-v1",
         store_id="S01",
         decision_date=date(2026, 1, 5),
         horizon_days=7,
         lookback_days=5,
     )
 
+    assert snapshot.dataset_id == "demo-retail-v1"
     assert snapshot.store_id == "S01"
     assert snapshot.decision_date == date(2026, 1, 5)
     assert snapshot.horizon_end_date == date(2026, 1, 12)
@@ -324,6 +328,7 @@ def test_snapshot_applies_temporal_cutoff(snapshot_db):
 def test_snapshot_contains_future_known_calendar(snapshot_db):
     snapshot = build_retail_snapshot(
         snapshot_db,
+        dataset_id="demo-retail-v1",
         store_id="S01",
         decision_date=date(2026, 1, 5),
         horizon_days=7,
@@ -341,6 +346,7 @@ def test_snapshot_contains_future_known_calendar(snapshot_db):
 def test_snapshot_is_oracle_safe(snapshot_db):
     snapshot = build_retail_snapshot(
         snapshot_db,
+        dataset_id="demo-retail-v1",
         store_id="S01",
         decision_date=date(2026, 1, 5),
         horizon_days=7,
@@ -374,6 +380,7 @@ def test_oracle_guard_rejects_nested_forbidden_field():
 def test_snapshot_hash_is_deterministic(snapshot_db):
     first = build_retail_snapshot(
         snapshot_db,
+        dataset_id="demo-retail-v1",
         store_id="S01",
         decision_date=date(2026, 1, 5),
         horizon_days=7,
@@ -382,6 +389,7 @@ def test_snapshot_hash_is_deterministic(snapshot_db):
 
     second = build_retail_snapshot(
         snapshot_db,
+        dataset_id="demo-retail-v1",
         store_id="S01",
         decision_date=date(2026, 1, 5),
         horizon_days=7,
@@ -398,6 +406,7 @@ def test_snapshot_rejects_non_positive_lookback(snapshot_db):
     ):
         build_retail_snapshot(
             snapshot_db,
+            dataset_id="demo-retail-v1",
             store_id="S01",
             decision_date=date(2026, 1, 5),
             horizon_days=7,
@@ -414,8 +423,90 @@ def test_snapshot_rejects_decision_date_outside_calendar_range(
     ):
         build_retail_snapshot(
             snapshot_db,
+            dataset_id="demo-retail-v1",
             store_id="S01",
             decision_date=date(2026, 7, 28),
             horizon_days=7,
             lookback_days=5,
         )
+
+
+def test_snapshot_isolates_datasets_with_same_store_and_sku(snapshot_db):
+    metadata = MetaData()
+    sales = Table(
+        "fact_daily_sales",
+        metadata,
+        autoload_with=snapshot_db.get_bind(),
+    )
+    purchase_orders = Table(
+        "fact_purchase_orders",
+        metadata,
+        autoload_with=snapshot_db.get_bind(),
+    )
+
+    snapshot_db.execute(
+        sales.insert(),
+        [
+            {
+                "dataset_id": "upload-b",
+                "store_id": "S01",
+                "sku_id": "SKU001",
+                "sales_date": date(2026, 1, 5),
+                "units_sold": 999,
+                "stock_on_hand_start": 999,
+                "stock_on_hand_end": 888,
+                "stockout_flag": False,
+                "promo_flag": True,
+                "units_demanded_est": 999,
+            }
+        ],
+    )
+    snapshot_db.execute(
+        purchase_orders.insert(),
+        [
+            {
+                "purchase_order_id": "PO-UPLOAD",
+                "dataset_id": "upload-b",
+                "store_id": "S01",
+                "sku_id": "SKU001",
+                "supplier_id": "SUP01",
+                "order_date": date(2026, 1, 2),
+                "order_qty_units": 777,
+                "promised_lead_time_days": 1,
+                "actual_lead_time_days": 1,
+                "delay_days": 0,
+            }
+        ],
+    )
+    snapshot_db.commit()
+
+    demo = build_retail_snapshot(
+        snapshot_db,
+        dataset_id="demo-retail-v1",
+        store_id="S01",
+        decision_date=date(2026, 1, 5),
+        horizon_days=7,
+        lookback_days=5,
+    )
+    uploaded = build_retail_snapshot(
+        snapshot_db,
+        dataset_id="upload-b",
+        store_id="S01",
+        decision_date=date(2026, 1, 5),
+        horizon_days=7,
+        lookback_days=5,
+    )
+
+    assert 999.0 not in {row.units_sold for row in demo.sales_history}
+    assert {row.units_sold for row in uploaded.sales_history} == {999.0}
+    assert {product.sku_id for product in demo.products} == {"SKU001", "SKU002"}
+    assert {product.sku_id for product in uploaded.products} == {"SKU001"}
+    assert "PO-UPLOAD" not in {
+        delivery.order_id
+        for delivery in demo.supplier_delivery_history
+    }
+    assert {
+        delivery.order_id
+        for delivery in uploaded.supplier_delivery_history
+    } == {"PO-UPLOAD"}
+

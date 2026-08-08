@@ -19,6 +19,7 @@ from app.ml.contracts import (
     SupplierSnapshot,
 )
 from app.ml.oracle_guard import assert_oracle_safe_payload
+from app.services.dataset_scope import dataset_filter
 
 
 class SnapshotBuildError(ValueError):
@@ -122,6 +123,7 @@ def _stable_order_id(
 def build_retail_snapshot(
     db: Session,
     *,
+    dataset_id: str,
     store_id: str,
     decision_date: date,
     horizon_days: int,
@@ -186,6 +188,47 @@ def build_retail_snapshot(
             "confidence dapat diturunkan untuk SKU dengan data terbatas."
         )
 
+    sales_dataset_col = _column(
+        sales_table,
+        "dataset_id",
+    )
+    sales_store_col = _column(
+        sales_table,
+        "store_id",
+    )
+    sales_sku_col = _column(
+        sales_table,
+        "sku_id",
+    )
+    sales_date_col = _column(
+        sales_table,
+        "sales_date",
+        "transaction_date",
+        "calendar_date",
+        "date",
+    )
+
+    dataset_sku_rows = db.execute(
+        select(sales_sku_col)
+        .where(dataset_filter(sales_dataset_col, dataset_id))
+        .where(sales_store_col == store_id)
+        .where(sales_date_col <= decision_date)
+        .distinct()
+        .order_by(sales_sku_col)
+    ).all()
+
+    dataset_sku_ids = tuple(
+        str(row[0])
+        for row in dataset_sku_rows
+        if row[0] is not None
+    )
+
+    if not dataset_sku_ids:
+        raise SnapshotBuildError(
+            f"Dataset {dataset_id} tidak memiliki data untuk toko "
+            f"{store_id} sampai {decision_date.isoformat()}"
+        )
+
     # Store validation
     store_id_col = _column(
         stores_table,
@@ -245,11 +288,6 @@ def build_retail_snapshot(
         for row in supplier_rows
     )
 
-    supplier_by_id = {
-        supplier.supplier_id: supplier
-        for supplier in suppliers
-    }
-
     # Products
     product_sku_col = _column(
         products_table,
@@ -281,15 +319,22 @@ def build_retail_snapshot(
         "unit_price",
     )
 
+    product_statement = select(
+        product_sku_col,
+        product_name_col,
+        product_category_col,
+        product_supplier_col,
+        unit_cost_col,
+        unit_price_col,
+    )
+
+    if dataset_id != "demo-retail-v1":
+        product_statement = product_statement.where(
+            product_sku_col.in_(dataset_sku_ids)
+        )
+
     product_rows = db.execute(
-        select(
-            product_sku_col,
-            product_name_col,
-            product_category_col,
-            product_supplier_col,
-            unit_cost_col,
-            unit_price_col,
-        ).order_by(product_sku_col)
+        product_statement.order_by(product_sku_col)
     ).mappings().all()
 
     products = tuple(
@@ -321,22 +366,21 @@ def build_retail_snapshot(
         for product in products
     }
 
+    dataset_supplier_ids = {
+        product.supplier_id
+        for product in products
+    }
+    suppliers = tuple(
+        supplier
+        for supplier in suppliers
+        if supplier.supplier_id in dataset_supplier_ids
+    )
+    supplier_by_id = {
+        supplier.supplier_id: supplier
+        for supplier in suppliers
+    }
+
     # Historical sales: explicitly select safe columns only.
-    sales_store_col = _column(
-        sales_table,
-        "store_id",
-    )
-    sales_sku_col = _column(
-        sales_table,
-        "sku_id",
-    )
-    sales_date_col = _column(
-        sales_table,
-        "sales_date",
-        "transaction_date",
-        "calendar_date",
-        "date",
-    )
     units_sold_col = _column(
         sales_table,
         "units_sold",
@@ -380,6 +424,7 @@ def build_retail_snapshot(
 
     sales_rows = db.execute(
         select(*safe_sales_columns)
+        .where(dataset_filter(sales_dataset_col, dataset_id))
         .where(sales_store_col == store_id)
         .where(sales_date_col >= lookback_start)
         .where(sales_date_col <= decision_date)
@@ -457,6 +502,10 @@ def build_retail_snapshot(
     )
 
     # Purchase-order reconstruction as of decision_date.
+    po_dataset_col = _column(
+        purchase_orders_table,
+        "dataset_id",
+    )
     po_store_col = _column(
         purchase_orders_table,
         "store_id",
@@ -528,6 +577,7 @@ def build_retail_snapshot(
 
     po_statement = (
         select(*safe_po_columns)
+        .where(dataset_filter(po_dataset_col, dataset_id))
         .where(po_order_date_col <= decision_date)
         .order_by(po_order_date_col, po_sku_col)
     )
@@ -783,6 +833,7 @@ def build_retail_snapshot(
     )
 
     snapshot = RetailSnapshot(
+        dataset_id=dataset_id,
         store_id=store_id,
         decision_date=decision_date,
         lookback_start_date=lookback_start,

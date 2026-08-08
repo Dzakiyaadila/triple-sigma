@@ -1,49 +1,65 @@
 from datetime import datetime, timezone, date
 from sqlalchemy.orm import Session
-from sqlalchemy import select, func
-from app.db.models import Store, Product, Supplier, DailySales, DecisionRun, Recommendation
+from app.db.models import Product, DecisionRun, Recommendation
 from app.ml.restock_plan import generate_restock_plan
 from app.services.reasoning import generate_reasoning
-from app.core.constants import DEMO_DATASET_ID
+from app.services.dataset_scope import ensure_dataset_metadata
+from app.services.retail_snapshot_service import build_retail_snapshot
 
-def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: float,
-                  policy_preset: str = "seimbang", horizon_days: int = 7,
-                  dataset_id: str | None = None,
-                  min_fill_rate: float | None = None,
-                  protected_sku_ids: list[str] | None = None) -> dict:
-    store = db.get(Store, store_id)
-    if not store:
-        raise ValueError(f"Toko {store_id} tidak ditemukan")
 
-    if dataset_id in (None, DEMO_DATASET_ID):
-        dataset_filter = DailySales.dataset_id.is_(None)
-    else:
-        dataset_filter = DailySales.dataset_id == dataset_id
+def run_decision(
+    db: Session,
+    dataset_id: str,
+    store_id: str,
+    decision_date: str,
+    budget_rp: float,
+    policy_preset: str = "seimbang",
+    horizon_days: int = 7,
+    min_fill_rate: float | None = None,
+    protected_sku_ids: list[str] | None = None,
+) -> dict:
+    decision_day = date.fromisoformat(decision_date)
 
-    sku_ids_query = select(func.distinct(DailySales.sku_id)).where(
-        DailySales.store_id == store_id, dataset_filter,
+    snapshot = build_retail_snapshot(
+        db,
+        dataset_id=dataset_id,
+        store_id=store_id,
+        decision_date=decision_day,
+        horizon_days=horizon_days,
     )
-    scoped_sku_ids = {row[0] for row in db.execute(sku_ids_query)}
-    if not scoped_sku_ids:
-        raise ValueError(
-            f"Tidak ada data transaksi untuk toko {store_id} pada dataset ini"
-        )
 
-    products = db.scalars(
-        select(Product).where(Product.sku_id.in_(scoped_sku_ids))
-    ).all()
+    ensure_dataset_metadata(
+        db,
+        dataset_id=dataset_id,
+    )
+
     product_dicts = [
-        {"sku_id": p.sku_id, "unit_cost_rp": p.unit_cost_rp} for p in products
+        {
+            "sku_id": product.sku_id,
+            "unit_cost_rp": product.unit_cost_rp,
+        }
+        for product in snapshot.products
     ]
-
-    product_by_id = {p.sku_id: p for p in products}
-    suppliers = {s.supplier_id: s for s in db.scalars(select(Supplier)).all()}
+    product_by_id = {
+        product.sku_id: product
+        for product in snapshot.products
+    }
+    suppliers = {
+        supplier.supplier_id: supplier
+        for supplier in snapshot.suppliers
+    }
 
     plan = generate_restock_plan(
-        products=product_dicts, store_id=store_id, decision_date=decision_date,
-        budget_rp=budget_rp, policy_preset=policy_preset, horizon_days=horizon_days,
-        protected_sku_ids=protected_sku_ids, min_fill_rate=min_fill_rate,
+        products=product_dicts,
+        store_id=store_id,
+        decision_date=decision_date,
+        budget_rp=budget_rp,
+        policy_preset=policy_preset,
+        horizon_days=horizon_days,
+        protected_sku_ids=protected_sku_ids,
+        min_fill_rate=min_fill_rate,
     )
+    plan["data_hash"] = snapshot.data_hash()
 
     for r in plan["recommendations"]:
         product = product_by_id.get(r["sku_id"])
@@ -59,8 +75,8 @@ def run_decision(db: Session, store_id: str, decision_date: str, budget_rp: floa
         r.update(generate_reasoning(r))
 
     run = DecisionRun(
-        run_id=plan["run_id"], dataset_id=None, store_id=store_id,
-        decision_date=date.fromisoformat(decision_date), budget_rp=budget_rp,
+        run_id=plan["run_id"], dataset_id=dataset_id, store_id=store_id,
+        decision_date=decision_day, budget_rp=budget_rp,
         policy_preset=policy_preset, constraints_json={"horizon_days": horizon_days},
         model_version=plan["model_version"], data_hash=plan["data_hash"],
         status="completed", runtime_ms=plan["runtime_ms"],

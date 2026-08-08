@@ -162,7 +162,7 @@ function PilihData() {
             {dataset.hasFatal ? (
               <p className="flex items-center gap-2 text-xs text-danger">
                 <AlertTriangle className="h-4 w-4" />
-                Perbaiki dulu: isi kolom unit_cost yang kosong dan hapus SKU yang belum dikenal sistem, lalu unggah ulang.
+                Perbaiki error pada laporan validasi, lalu unggah ulang dataset.
               </p>
             ) : (
               <p className="flex items-center gap-2 text-xs text-safe">

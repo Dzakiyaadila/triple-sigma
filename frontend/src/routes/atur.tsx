@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Wallet, Scale, Shield, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
-import { useRestock } from "@/lib/restock-store";
+import { latestSupportedDecisionDate, useRestock } from "@/lib/restock-store";
 import { getDatasetSkus, type SkuOption } from "@/lib/api";
 import { EmptyState, GoldButton, Num, SectionTitle, SimDataBadge } from "@/components/restock/primitives";
 import { Switch } from "@/components/ui/switch";
@@ -41,8 +41,6 @@ function AturKeputusan() {
     getDatasetSkus(dataset.datasetId, setup.storeId)
       .then((skus) => {
         setAvailableSkus(skus);
-        // Buang SKU yang dilindungi tapi ternyata nggak ada di toko/dataset
-        // yang lagi aktif sekarang (misal user baru aja ganti toko/dataset).
         const validIds = new Set(skus.map((s) => s.sku_id));
         const stillValid = setup.protectedSkus.filter((id) => validIds.has(id));
         if (stillValid.length !== setup.protectedSkus.length) {
@@ -93,6 +91,14 @@ function AturKeputusan() {
             <input
               type="date"
               value={setup.date}
+              min={dataset.minDate ?? undefined}
+              max={
+                latestSupportedDecisionDate(
+                  dataset.maxDate,
+                  dataset.calendarMaxDate,
+                  setup.horizon,
+                ) ?? undefined
+              }
               onChange={(e) => updateSetup({ date: e.target.value })}
               className="num mt-1 h-10 w-full rounded-[6px] border border-border bg-background px-3 text-sm outline-none focus:border-accent-gold"
             />
