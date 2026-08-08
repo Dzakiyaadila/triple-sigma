@@ -153,8 +153,7 @@ export interface CreateDecisionRunPayload {
   decision_date: string;
   budget_rp: number;
   horizon_days: number;
-  policy_preset: string;
-  min_fill_rate?: number | null;
+  policy_preset: PolicyPreset;
   protected_sku_ids?: string[];
 }
 
@@ -165,22 +164,45 @@ export function createDecisionRun(payload: CreateDecisionRunPayload) {
   });
 }
 
+export type RecommendationStatus =
+  | "belum_diputuskan"
+  | "disetujui"
+  | "diedit"
+  | "ditolak";
+
+export interface RecommendationUpdateResponse {
+  sku_id: string;
+  status: RecommendationStatus;
+  adjusted_qty: number | null;
+  required_cash_rp: number;
+  budget_allocated_rp: number;
+  budget_remaining_rp: number;
+}
+
 export function updateRecommendation(
   runId: string,
   skuId: string,
-  payload: { status: string; adjusted_qty?: number },
+  payload: { status: RecommendationStatus; adjusted_qty?: number },
 ) {
-  return request(`/decision-runs/${runId}/recommendations/${skuId}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
+  return request<RecommendationUpdateResponse>(
+    `/decision-runs/${runId}/recommendations/${skuId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export interface ConfirmDecisionRunResponse {
+  confirmed_count: number;
+  confirmed_at: string;
+  total_cost_rp: number;
 }
 
 export function confirmDecisionRun(runId: string) {
-  return request<{ confirmed_count: number; confirmed_at: string; total_cost_rp: number }>(
-    `/decision-runs/${runId}/confirm`,
-    { method: "POST" },
-  );
+  return request<ConfirmDecisionRunResponse>(`/decision-runs/${runId}/confirm`, {
+    method: "POST",
+  });
 }
 
 export function exportCsvUrl(runId: string) {
@@ -235,15 +257,20 @@ export interface StoreOption {
 export function getDatasetStores(datasetId: string) {
   return request<StoreOption[]>(`/datasets/${datasetId}/stores`);
 }
-
-export interface SkuOption {
+export interface ProductOption {
   sku_id: string;
   product_name: string;
-  category: string;
+  category?: string | null;
 }
 
-export function getDatasetSkus(datasetId: string, storeId: string) {
-  return request<SkuOption[]>(
-    `/datasets/${datasetId}/skus?store_id=${encodeURIComponent(storeId)}`,
-  );
+export function getDatasetProducts(
+  datasetId: string,
+  storeId: string,
+  decisionDate: string,
+) {
+  const query = new URLSearchParams({
+    store_id: storeId,
+    decision_date: decisionDate,
+  });
+  return request<ProductOption[]>(`/datasets/${datasetId}/products?${query.toString()}`);
 }
