@@ -187,8 +187,10 @@ function AturKeputusan() {
                 <span className="text-xs text-muted-foreground">(opsional)</span>
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                SKU yang dilindungi mendapat floor minimal 1 unit bila baseline stockout risk lebih
-                dari 0. Jika floor tidak feasible terhadap budget, backend menolak run.
+                SKU yang kamu lindungi akan tetap direkomendasikan minimal 1 unit,
+                selama masih ada risiko kehabisan stok. Kalau modal yang kamu masukkan
+                ternyata belum cukup untuk memenuhi ini, sistem akan kasih tahu supaya
+                kamu bisa naikkan modalnya.
               </p>
             </div>
             <FlatBadge>{setup.protectedSkus.length} dipilih</FlatBadge>
@@ -241,9 +243,8 @@ function AturKeputusan() {
         </div>
 
         <div className="rounded-[6px] border border-info/30 bg-info-soft/40 px-3 py-2 text-xs text-muted-foreground">
-          Target service level minimum belum diekspos karena exact optimizer saat ini belum
-          menerapkan constraint tersebut. Kontrol sengaja disembunyikan agar UI tidak mengirim
-          parameter yang diabaikan backend.
+          Fitur atur target ketersediaan stok minimum belum tersedia untuk saat ini.
+          Kontrol ini akan muncul lagi begitu sudah siap dipakai.
         </div>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
