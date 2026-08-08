@@ -17,6 +17,7 @@ def create_decision_run(payload: DecisionRunRequest, db: Session = Depends(get_d
             decision_date=payload.decision_date,
             budget_rp=payload.budget_rp, policy_preset=payload.policy_preset,
             horizon_days=payload.horizon_days,
+            min_fill_rate=payload.min_fill_rate, protected_sku_ids=payload.protected_sku_ids,
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

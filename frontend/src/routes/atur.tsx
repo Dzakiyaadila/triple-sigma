@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Wallet, Scale, Shield } from "lucide-react";
+import { Wallet, Scale, Shield, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PLAN_ITEMS, POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
+import { POLICY_LABEL, formatRupiah, parseRupiah, type PolicyStyle } from "@/lib/plan-data";
 import { latestSupportedDecisionDate, useRestock } from "@/lib/restock-store";
+import { getDatasetSkus, type SkuOption } from "@/lib/api";
 import { EmptyState, GoldButton, Num, SectionTitle, SimDataBadge } from "@/components/restock/primitives";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
@@ -30,6 +31,29 @@ function AturKeputusan() {
   const { dataset, setup, updateSetup, runPlan, availableStores } = useRestock();
   const navigate = useNavigate();
   const [raw, setRaw] = useState(formatRupiah(setup.budget));
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [availableSkus, setAvailableSkus] = useState<SkuOption[]>([]);
+  const [skusLoading, setSkusLoading] = useState(false);
+
+  useEffect(() => {
+    if (!dataset || !setup.storeId) return;
+    setSkusLoading(true);
+    getDatasetSkus(dataset.datasetId, setup.storeId)
+      .then((skus) => {
+        setAvailableSkus(skus);
+        const validIds = new Set(skus.map((s) => s.sku_id));
+        const stillValid = setup.protectedSkus.filter((id) => validIds.has(id));
+        if (stillValid.length !== setup.protectedSkus.length) {
+          updateSetup({ protectedSkus: stillValid });
+        }
+      })
+      .catch((err) => {
+        console.error("Gagal memuat daftar SKU:", err);
+        setAvailableSkus([]);
+      })
+      .finally(() => setSkusLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataset?.datasetId, setup.storeId]);
 
   if (!dataset || dataset.hasFatal) {
     return (
@@ -131,57 +155,89 @@ function AturKeputusan() {
           </div>
         </div>
 
-        <div className="rounded-[6px] border border-border p-4">
-          <label className="flex items-center justify-between text-sm">
-            Tentukan target ketersediaan stok minimum
-            <Switch
-              checked={setup.serviceLevelOn}
-              onCheckedChange={(v) => updateSetup({ serviceLevelOn: v })}
-              aria-label="Target service level"
+        <div className="rounded-[6px] border border-border">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((v) => !v)}
+            className="flex w-full items-center justify-between p-4 text-left text-sm font-medium"
+          >
+            Pengaturan lanjutan
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform duration-150",
+                advancedOpen && "rotate-180",
+              )}
             />
-          </label>
-          {setup.serviceLevelOn ? (
-            <div className="mt-4 flex items-center gap-4">
-              <Slider
-                value={[setup.serviceLevel]}
-                min={70}
-                max={99}
-                step={1}
-                onValueChange={(v) => updateSetup({ serviceLevel: v[0] ?? 90 })}
-                className="flex-1"
-              />
-              <Num className="w-14 text-right text-sm font-medium">{setup.serviceLevel}%</Num>
+          </button>
+
+          {advancedOpen ? (
+            <div className="space-y-4 border-t border-border p-4">
+              <div className="rounded-[6px] border border-border p-4">
+                <label className="flex items-center justify-between text-sm">
+                  Tentukan target ketersediaan stok minimum
+                  <Switch
+                    checked={setup.serviceLevelOn}
+                    onCheckedChange={(v) => updateSetup({ serviceLevelOn: v })}
+                    aria-label="Target service level"
+                  />
+                </label>
+                {setup.serviceLevelOn ? (
+                  <div className="mt-4 flex items-center gap-4">
+                    <Slider
+                      value={[setup.serviceLevel]}
+                      min={70}
+                      max={99}
+                      step={1}
+                      onValueChange={(v) => updateSetup({ serviceLevel: v[0] ?? 90 })}
+                      className="flex-1"
+                    />
+                    <Num className="w-14 text-right text-sm font-medium">{setup.serviceLevel}%</Num>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[6px] border border-border p-4">
+                <p className="text-sm">
+                  Lindungi SKU tertentu <span className="text-xs text-muted-foreground">(opsional)</span>
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  SKU ini akan selalu direkomendasikan, meski secara finansial belum tentu paling menguntungkan.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {skusLoading ? (
+                    <p className="text-xs text-muted-foreground">Memuat daftar SKU...</p>
+                  ) : availableSkus.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Tidak ada SKU pada toko/dataset ini.</p>
+                  ) : (
+                    availableSkus.map((it) => {
+                      const active = setup.protectedSkus.includes(it.sku_id);
+                      return (
+                        <button
+                          key={it.sku_id}
+                          type="button"
+                          onClick={() =>
+                            updateSetup({
+                              protectedSkus: active
+                                ? setup.protectedSkus.filter((s) => s !== it.sku_id)
+                                : [...setup.protectedSkus, it.sku_id],
+                            })
+                          }
+                          className={cn(
+                            "rounded-[6px] border px-2 py-1 text-xs transition-colors duration-150",
+                            active
+                              ? "border-accent-gold bg-accent-gold-soft text-accent-gold"
+                              : "border-border text-muted-foreground hover:bg-secondary",
+                          )}
+                        >
+                          {it.product_name}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
             </div>
           ) : null}
-        </div>
-
-        <div className="rounded-[6px] border border-border p-4">
-          <p className="text-sm">Lindungi SKU tertentu <span className="text-xs text-muted-foreground">(opsional)</span></p>
-          <p className="mt-1 text-xs text-muted-foreground">SKU ini akan selalu direkomendasikan, meski secara finansial belum tentu paling menguntungkan.</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {PLAN_ITEMS.slice(0, 10).map((it) => {
-              const active = setup.protectedSkus.includes(it.sku_id);
-              return (
-                <button
-                  key={it.sku_id}
-                  type="button"
-                  onClick={() =>
-                    updateSetup({
-                      protectedSkus: active
-                        ? setup.protectedSkus.filter((s) => s !== it.sku_id)
-                        : [...setup.protectedSkus, it.sku_id],
-                    })
-                  }
-                  className={cn(
-                    "rounded-[6px] border px-2 py-1 text-xs transition-colors duration-150",
-                    active ? "border-accent-gold bg-accent-gold-soft text-accent-gold" : "border-border text-muted-foreground hover:bg-secondary",
-                  )}
-                >
-                  {it.sku_name}
-                </button>
-              );
-            })}
-          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
