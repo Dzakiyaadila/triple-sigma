@@ -1,3 +1,4 @@
+from datetime import date
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -5,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.models import CalendarDay, DailySales, Product, Store
 from app.db.session import get_db
 from app.schemas.dataset import (
+    DatasetProductOut,
     DatasetReadiness,
     DatasetUploadResponse,
     StoreOut,
@@ -125,5 +127,38 @@ def get_dataset_stores(
             select(Store)
             .where(Store.store_id.in_(store_ids))
             .order_by(Store.store_id)
+        )
+    )
+
+@router.get("/{dataset_id}/products", response_model=list[DatasetProductOut])
+def get_dataset_products(
+    dataset_id: str,
+    store_id: str,
+    decision_date: date,
+    db: Session = Depends(get_db),
+):
+    sku_ids_query = (
+        select(func.distinct(DailySales.sku_id))
+        .where(dataset_filter(DailySales.dataset_id, dataset_id))
+        .where(DailySales.store_id == store_id)
+        .where(DailySales.date <= decision_date)
+    )
+
+    sku_ids = {
+        row[0]
+        for row in db.execute(sku_ids_query)
+        if row[0] is not None
+    }
+    if not sku_ids:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset tidak ditemukan atau tidak memiliki SKU",
+        )
+
+    return list(
+        db.scalars(
+            select(Product)
+            .where(Product.sku_id.in_(sku_ids))
+            .order_by(Product.sku_id)
         )
     )

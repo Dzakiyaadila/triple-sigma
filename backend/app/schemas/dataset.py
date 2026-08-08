@@ -12,6 +12,14 @@ class StoreOut(BaseModel):
     city: Optional[str] = None
 
 
+class DatasetProductOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sku_id: str
+    product_name: str
+    category: Optional[str] = None
+
+
 class DatasetReadiness(BaseModel):
     dataset_id: str
     source_type: str
