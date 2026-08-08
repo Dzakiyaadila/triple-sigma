@@ -49,7 +49,7 @@ def _snapshot(days: int) -> RetailSnapshot:
             calendar_date=start + timedelta(days=index),
             is_weekend=(start + timedelta(days=index)).weekday() >= 5,
             is_holiday=False,
-            is_payday=(start + timedelta(days=index)).day >= 25,
+            is_payday_week=(start + timedelta(days=index)).day >= 25,
         )
         for index in range(days + 15)
     )

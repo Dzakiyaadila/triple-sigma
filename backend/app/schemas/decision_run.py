@@ -7,7 +7,7 @@ RecommendationStatus = Literal["belum_diputuskan", "disetujui", "diedit", "ditol
 
 
 class DecisionConstraints(BaseModel):
-    budget_rp: float
+    budget_rp: float = Field(ge=0)
     horizon_days: int = 7
     min_fill_rate: Optional[float] = None
     protected_sku_ids: list[str] = Field(default_factory=list)
@@ -82,7 +82,7 @@ class DecisionRunRequest(BaseModel):
     dataset_id: str
     store_id: str
     decision_date: str
-    budget_rp: float
+    budget_rp: float = Field(ge=0)
     horizon_days: int = 7
     policy_preset: PolicyPreset = Field(
         default="seimbang",

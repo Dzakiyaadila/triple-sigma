@@ -835,6 +835,7 @@ def build_retail_snapshot(
     )
     payday_col = _column(
         calendar_table,
+        "is_payday_week",
         "is_payday",
         "payday_flag",
         required=False,
@@ -868,7 +869,7 @@ def build_retail_snapshot(
             is_holiday=_to_bool(
                 _mapping_value(row, holiday_col)
             ),
-            is_payday=_to_bool(
+            is_payday_week=_to_bool(
                 _mapping_value(row, payday_col)
             ),
         )

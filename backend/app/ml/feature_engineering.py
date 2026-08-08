@@ -89,7 +89,9 @@ def snapshot_to_frame(snapshot: RetailSnapshot) -> pd.DataFrame:
                     calendar_row.is_holiday if calendar_row is not None else False
                 ),
                 "is_payday_week": float(
-                    calendar_row.is_payday if calendar_row is not None else False
+                    calendar_row.is_payday_week
+                    if calendar_row is not None
+                    else False
                 ),
                 "day_of_month": float(day.day),
                 "month": float(day.month),

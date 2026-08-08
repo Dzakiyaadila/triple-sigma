@@ -125,7 +125,7 @@ def snapshot_db():
         ),
         Column("is_weekend", Boolean, nullable=False),
         Column("is_holiday", Boolean, nullable=False),
-        Column("is_payday", Boolean, nullable=False),
+        Column("is_payday_week", Boolean, nullable=False),
     )
 
     metadata.create_all(engine)
@@ -243,7 +243,7 @@ def snapshot_db():
                     "calendar_date": date(2026, 1, day),
                     "is_weekend": False,
                     "is_holiday": False,
-                    "is_payday": False,
+                    "is_payday_week": day in {5, 6, 7},
                 }
                 for day in range(1, 13)
             ],
@@ -341,6 +341,11 @@ def test_snapshot_contains_future_known_calendar(snapshot_db):
 
     assert date(2026, 1, 5) in calendar_dates
     assert date(2026, 1, 12) in calendar_dates
+    calendar_by_date = {
+        row.calendar_date: row for row in snapshot.calendar
+    }
+    assert calendar_by_date[date(2026, 1, 5)].is_payday_week is True
+    assert calendar_by_date[date(2026, 1, 8)].is_payday_week is False
 
 
 def test_snapshot_is_oracle_safe(snapshot_db):
@@ -509,4 +514,3 @@ def test_snapshot_isolates_datasets_with_same_store_and_sku(snapshot_db):
         delivery.order_id
         for delivery in uploaded.supplier_delivery_history
     } == {"PO-UPLOAD"}
-

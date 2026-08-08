@@ -53,6 +53,28 @@ def main() -> None:
     assert len(plan["recommendations"]) == 31
     assert plan["budget_allocated_rp"] <= 10_000_000
 
+    zero_budget_plan = request_json(
+        "/decision-runs",
+        method="POST",
+        payload={
+            "dataset_id": "demo-retail-v1",
+            "store_id": "S01",
+            "decision_date": "2024-06-23",
+            "budget_rp": 0,
+            "horizon_days": 7,
+            "policy_preset": "seimbang",
+            "protected_sku_ids": [],
+        },
+    )
+    assert len(zero_budget_plan["recommendations"]) == 31
+    assert zero_budget_plan["budget_allocated_rp"] == 0
+    assert zero_budget_plan["expected_nov_contribution_rp"] == 0
+    assert all(
+        item["recommended_qty"] == 0
+        and item["required_cash_rp"] == 0
+        for item in zero_budget_plan["recommendations"]
+    )
+
     recommendation = next(
         item for item in plan["recommendations"] if item["recommended_qty"] > 0
     )
