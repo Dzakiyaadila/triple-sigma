@@ -1,7 +1,9 @@
 from datetime import datetime, timezone, date
 from sqlalchemy.orm import Session
 from app.db.models import Product, DecisionRun, Recommendation
+from app.ml.contracts import MLDecisionConstraints
 from app.ml.restock_plan import generate_restock_plan
+from app.schemas.decision_run import RestockPlan
 from app.services.reasoning import generate_reasoning
 from app.services.dataset_scope import ensure_dataset_metadata
 from app.services.retail_snapshot_service import build_retail_snapshot
@@ -16,9 +18,16 @@ def run_decision(
     policy_preset: str = "seimbang",
     horizon_days: int = 7,
     min_fill_rate: float | None = None,
-    protected_sku_ids: list[str] | None = None,
+    protected_sku_ids: list[str] | tuple[str, ...] = (),
 ) -> dict:
     decision_day = date.fromisoformat(decision_date)
+    constraints = MLDecisionConstraints(
+        budget_rp=budget_rp,
+        horizon_days=horizon_days,
+        policy_preset=policy_preset,
+        min_fill_rate=min_fill_rate,
+        protected_sku_ids=tuple(protected_sku_ids),
+    )
 
     snapshot = build_retail_snapshot(
         db,
@@ -33,13 +42,6 @@ def run_decision(
         dataset_id=dataset_id,
     )
 
-    product_dicts = [
-        {
-            "sku_id": product.sku_id,
-            "unit_cost_rp": product.unit_cost_rp,
-        }
-        for product in snapshot.products
-    ]
     product_by_id = {
         product.sku_id: product
         for product in snapshot.products
@@ -50,48 +52,72 @@ def run_decision(
     }
 
     plan = generate_restock_plan(
-        products=product_dicts,
-        store_id=store_id,
-        decision_date=decision_date,
-        budget_rp=budget_rp,
-        policy_preset=policy_preset,
-        horizon_days=horizon_days,
-        protected_sku_ids=protected_sku_ids,
-        min_fill_rate=min_fill_rate,
+        snapshot=snapshot,
+        constraints=constraints,
     )
-    plan["data_hash"] = snapshot.data_hash()
 
-    for r in plan["recommendations"]:
-        product = product_by_id.get(r["sku_id"])
-        supplier = suppliers.get(product.supplier_id) if product and product.supplier_id else None
-
-        r["sku_name"] = product.product_name if product else r["sku_id"]
-        r["category"] = product.category if product else "Lainnya"
-        r["supplier_name"] = supplier.supplier_name if supplier else "Supplier tidak diketahui"
-        r["supplier_note"] = (
-            f"Kemungkinan tepat waktu {round(r['supplier_on_time_probability'] * 100)}%, "
-            f"estimasi kedatangan sampai {r['supplier_p90_lead_time_days']} hari."
+    for recommendation in plan["recommendations"]:
+        product = product_by_id.get(recommendation["sku_id"])
+        supplier = (
+            suppliers.get(product.supplier_id)
+            if product and product.supplier_id
+            else None
         )
-        r.update(generate_reasoning(r))
+
+        recommendation["sku_name"] = (
+            product.product_name if product else recommendation["sku_id"]
+        )
+        recommendation["category"] = product.category if product else "Lainnya"
+        recommendation["supplier_name"] = (
+            supplier.supplier_name if supplier else "Supplier tidak diketahui"
+        )
+        recommendation["supplier_note"] = (
+            "Estimasi historis: "
+            f"{round(recommendation['supplier_on_time_probability'] * 100)}% "
+            "tepat waktu, dengan P90 lead time "
+            f"{recommendation['supplier_p90_lead_time_days']:.1f} hari."
+        )
+        recommendation.update(generate_reasoning(recommendation))
+
+    # Validate the full public contract before any recommendation is persisted.
+    plan = RestockPlan.model_validate(plan).model_dump(mode="json")
 
     run = DecisionRun(
-        run_id=plan["run_id"], dataset_id=dataset_id, store_id=store_id,
-        decision_date=decision_day, budget_rp=budget_rp,
-        policy_preset=policy_preset, constraints_json={"horizon_days": horizon_days},
-        model_version=plan["model_version"], data_hash=plan["data_hash"],
-        status="completed", runtime_ms=plan["runtime_ms"],
+        run_id=plan["run_id"],
+        dataset_id=dataset_id,
+        store_id=store_id,
+        decision_date=decision_day,
+        budget_rp=budget_rp,
+        policy_preset=policy_preset,
+        constraints_json={
+            "horizon_days": horizon_days,
+            "min_fill_rate": min_fill_rate,
+            "protected_sku_ids": list(protected_sku_ids),
+        },
+        model_version=plan["model_version"],
+        data_hash=plan["data_hash"],
+        status="completed",
+        runtime_ms=plan["runtime_ms"],
         created_at=datetime.now(timezone.utc),
     )
     db.add(run)
 
-    for r in plan["recommendations"]:
-        db.add(Recommendation(
-            run_id=plan["run_id"], sku_id=r["sku_id"],
-            original_qty=r["recommended_qty"], adjusted_qty=None,
-            status="belum_diputuskan", before_metrics_json=r,
-            after_metrics_json=None,
-            explanation_json={"reason_codes": r["reason_codes"], "warnings": r["warnings"]},
-        ))
+    for recommendation in plan["recommendations"]:
+        db.add(
+            Recommendation(
+                run_id=plan["run_id"],
+                sku_id=recommendation["sku_id"],
+                original_qty=recommendation["recommended_qty"],
+                adjusted_qty=None,
+                status="belum_diputuskan",
+                before_metrics_json=recommendation,
+                after_metrics_json=None,
+                explanation_json={
+                    "reason_codes": recommendation["reason_codes"],
+                    "warnings": recommendation["warnings"],
+                },
+            )
+        )
 
     db.commit()
     return plan

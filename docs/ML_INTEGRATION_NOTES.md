@@ -19,14 +19,15 @@ Backend (`decision_run_service.py`) sekarang otomatis:
 ### Signature
 ```python
 def generate_restock_plan(
-    products: list[dict],       # [{"sku_id": str, "unit_cost_rp": float}, ...] — SEMUA SKU toko
-    store_id: str,
-    decision_date: str,         # "YYYY-MM-DD"
-    budget_rp: float,
-    policy_preset: str = "seimbang",   # lihat bagian 3, PENTING beda dari draf awal
-    horizon_days: int = 7,
+    *,
+    snapshot: RetailSnapshot,
+    constraints: MLDecisionConstraints,
+    artifacts: ModelArtifacts | None = None,
 ) -> dict:
 ```
+
+`RetailSnapshot` dibangun backend dari PostgreSQL dengan dataset/store/date cutoff
+yang prediction-time safe. Planner tidak melakukan query database sendiri.
 
 ### Output wajib (per level)
 
@@ -108,7 +109,9 @@ forecast_daily_series bersifat optional untuk backward compatibility.
 Model final menghasilkan cumulative quantiles H1/H7/H14 dan tidak boleh
 membuat daily path secara sintetis.
 
-**Status implementasi saat ini:** mock backend **belum** benar-benar mengubah hasil berdasarkan nilai ini — 3 tombol di UI udah bisa diklik dan terkirim ke backend, tapi efeknya baru kerasa begitu fungsi kamu beneran membedakan strategi alokasi berdasarkan parameter ini. Ini salah satu hal paling penting yang dicek juri (nunjukkin `policy_preset` benar-benar ngubah trade-off, bukan cuma UI kosmetik).
+**Status implementasi R5:** `policy_preset` sudah masuk ke exact MCKP dan
+mengubah objective allocation secara matematis. Regression test R4 membuktikan
+policy dapat menghasilkan allocation berbeda pada state dan budget yang sama.
 
 ---
 
@@ -214,32 +217,33 @@ Modul ML bertanggung jawab untuk:
 - exact cash-constrained allocation;
 - confidence, warnings, dan `reason_codes`.
 
-Signature mock saat ini masih memakai:
+Production orchestration sekarang memakai typed boundary:
 
 ```python
 generate_restock_plan(
-    products,
-    store_id,
-    decision_date,
-    budget_rp,
-    policy_preset,
-    horizon_days,
+    snapshot=retail_snapshot,
+    constraints=ml_constraints,
 )
 ```
-Signature tersebut merupakan contract sementara untuk mock. Integrasi real
-pipeline dapat menggantinya dengan typed snapshot internal selama response
-utama ke backend/frontend tetap kompatibel dan perubahan disepakati bersama.
+
+Flow final R5 adalah `RetailSnapshot -> demand inference -> supplier risk ->
+LMAR/WCAR -> exact MCKP -> RestockPlan`. Response public ke frontend tetap
+kompatibel. `forecast_daily_series` sengaja kosong karena model demand adalah
+direct cumulative H1/H7/H14; daily path tidak disintesis.
 
 ---
 
-## 8. Pertanyaan masih terbuka (perlu dijawab sebelum/selama kamu implementasi)
+## 8. Keputusan implementasi yang sudah di-freeze
 
-- [ ] Format data historis yang kamu butuhkan — backend query dari DB dan susun jadi apa? (dataframe? list of dict?) Kasih tau bentuk yang kamu mau, saya sesuaikan cara backend nyiapin datanya
-- [ ] Berapa lama waktu eksekusi realistis untuk 1 toko penuh (31 SKU)? Sekarang backend proses "sinkron" (nunggu sampai selesai dalam 1 request) — kalau ternyata lambat (>5 detik), perlu didiskusikan ulang arsitekturnya
-- [ ] Library solver yang dipakai (SciPy `milp` sesuai rencana awal?) — perlu ditambahkan ke `requirements.txt` backend
-- [ ] Apakah `policy_preset` mempengaruhi bobot objective function di optimizer, atau cuma mengubah constraint (misal target service level minimum berbeda per preset)?
-
----
+- [x] Backend menyusun typed `RetailSnapshot`; ML tidak query database.
+- [x] Runtime 31 SKU tetap sinkron untuk MVP dan diukur melalui `runtime_ms`.
+- [x] Production allocator memakai exact sparse MCKP DP, bukan SciPy MILP.
+- [x] `policy_preset` mengubah bobot objective optimizer.
+- [x] `protected_sku_ids` didukung optimizer.
+- [ ] `min_fill_rate` belum menjadi exact constraint dan **ditolak eksplisit**
+      agar tidak diam-diam diabaikan. UI harus menonaktifkan/menghapus control
+      ini sampai constraint tersebut benar-benar tersedia.
+- [ ] Frozen model artifacts perlu dipaketkan pada release/deployment stack.
 
 ## 9. Kontak cepat kalau ada yang nggak jelas
 

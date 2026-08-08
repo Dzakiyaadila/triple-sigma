@@ -16,11 +16,68 @@ from app.db.models import (
 from app.services.decision_run_service import run_decision
 
 
-def test_run_decision_persists_selected_dataset_id():
+def test_run_decision_persists_selected_dataset_id(monkeypatch):
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
 
     decision_date = date(2026, 1, 5)
+
+    captured = {}
+
+    def fake_generate_restock_plan(*, snapshot, constraints):
+        captured["dataset_id"] = snapshot.dataset_id
+        captured["protected_sku_ids"] = constraints.protected_sku_ids
+        return {
+            "run_id": "run_dataset_scope",
+            "model_version": "restockiq-planner-test",
+            "data_hash": snapshot.data_hash(),
+            "budget_allocated_rp": 10_000.0,
+            "expected_nov_contribution_rp": 1_000.0,
+            "estimated_lmar_avoided_rp": 2_000.0,
+            "estimated_wcar_added_rp": 1_000.0,
+            "estimated_fill_rate": 0.9,
+            "data_quality": "baik",
+            "warnings": [],
+            "runtime_ms": 1,
+            "recommendations": [
+                {
+                    "sku_id": "SKU001",
+                    "priority_rank": 1,
+                    "recommended_qty": 1,
+                    "required_cash_rp": 10_000.0,
+                    "inventory_on_hand": 8.0,
+                    "inventory_on_order": 0.0,
+                    "effective_inventory": 8.0,
+                    "forecast_q10": 5.0,
+                    "forecast_q50": 7.0,
+                    "forecast_q90": 10.0,
+                    "forecast_daily_series": [],
+                    "stockout_risk_before": 0.4,
+                    "stockout_risk_after": 0.2,
+                    "lmar_before_rp": 4_000.0,
+                    "lmar_after_rp": 2_000.0,
+                    "incremental_lmar_avoided_rp": 2_000.0,
+                    "wcar_before_rp": 1_000.0,
+                    "wcar_after_rp": 2_000.0,
+                    "incremental_wcar_added_rp": 1_000.0,
+                    "supplier_on_time_probability": 0.8,
+                    "supplier_p90_lead_time_days": 3.0,
+                    "expected_nov_contribution_rp": 1_000.0,
+                    "confidence": "sedang",
+                    "reason_codes": [
+                        "risiko_stockout_tinggi",
+                        "supplier_kurang_andal",
+                    ],
+                    "warnings": [],
+                    "status": "belum_diputuskan",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.decision_run_service.generate_restock_plan",
+        fake_generate_restock_plan,
+    )
 
     with Session(engine) as db:
         db.add(Store(store_id="S01", store_name="Store 1"))
@@ -99,6 +156,7 @@ def test_run_decision_persists_selected_dataset_id():
             budget_rp=100_000,
             policy_preset="seimbang",
             horizon_days=7,
+            protected_sku_ids=["SKU001"],
         )
 
         run = db.scalar(
@@ -112,3 +170,6 @@ def test_run_decision_persists_selected_dataset_id():
         assert db.get(Dataset, "demo-retail-v1") is not None
         assert run.data_hash == plan["data_hash"]
         assert run.data_hash != "dummy-hash"
+        assert captured["dataset_id"] == "demo-retail-v1"
+        assert captured["protected_sku_ids"] == ("SKU001",)
+        assert run.constraints_json["protected_sku_ids"] == ["SKU001"]

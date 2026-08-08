@@ -1,140 +1,318 @@
-"""
-STUB — akan digantikan implementasi team ML. Untuk sekarang, fungsi ini
-menghasilkan data dummy yang PERSIS mengikuti skema RestockPlan/SKURecommendation
-di app/schemas/decision_run.py, supaya backend+frontend bisa terus jalan.
-"""
-import random
+from __future__ import annotations
+
+from datetime import date
+from time import perf_counter
 import uuid
-from datetime import date, timedelta
+
+from app.ml.artifact_store import ModelArtifacts, load_model_artifacts
+from app.ml.contracts import MLDecisionConstraints, RetailSnapshot
+from app.ml.demand_engine import DemandForecastResult, generate_demand_forecasts
+from app.ml.optimizer import OptimizationResult, optimize_exact_mckp
+from app.ml.risk_engine import RiskEngineResult, build_risk_profiles
+from app.ml.supplier_risk import SupplierRiskResult, estimate_supplier_risk
 
 
-def generate_restock_plan(products: list[dict], store_id: str, decision_date: str,
-                           budget_rp: float, policy_preset: str = "seimbang",
-                           horizon_days: int = 7,
-                           protected_sku_ids: list[str] | None = None,
-                           min_fill_rate: float | None = None) -> dict:
-    rng = random.Random(f"{store_id}-{decision_date}-{budget_rp}")
-    protected_set = set(protected_sku_ids or [])
+DECISION_ENGINE_VERSION = "restockiq-planner-v1"
+VALID_REASON_CODES = frozenset(
+    {
+        "risiko_stockout_tinggi",
+        "supplier_andal",
+        "supplier_kurang_andal",
+        "data_historis_kurang",
+    }
+)
 
-    candidates = []
-    for p in products:
-        q50 = rng.randint(15, 60)
-        q10 = max(1, int(q50 * rng.uniform(0.5, 0.75)))
-        q90 = int(q50 * rng.uniform(1.25, 1.6))
 
-        inventory_on_hand = rng.randint(0, 20)
-        inventory_on_order = rng.choice([0, 0, 0, 10, 15])
-        effective_inventory = inventory_on_hand + inventory_on_order
+class PlannerCompatibilityError(ValueError):
+    """Raised when a valid request cannot safely use the loaded artifact."""
 
-        stockout_risk_before = round(rng.uniform(0.1, 0.5), 2)
-        unit_cost = p["unit_cost_rp"] or 1000
 
-        lmar_before = round(q50 * unit_cost * rng.uniform(0.8, 2.2), -3)
-        wcar_before = round(inventory_on_hand * unit_cost * rng.uniform(0.3, 1.0), -3)
-
-        candidates.append({
-            "sku_id": p["sku_id"], "unit_cost": unit_cost,
-            "q10": q10, "q50": q50, "q90": q90,
-            "inventory_on_hand": inventory_on_hand,
-            "inventory_on_order": inventory_on_order,
-            "effective_inventory": effective_inventory,
-            "stockout_risk_before": stockout_risk_before,
-            "lmar_before": lmar_before, "wcar_before": wcar_before,
-            "supplier_on_time_probability": round(rng.uniform(0.65, 0.97), 2),
-            "supplier_p90_lead_time_days": rng.randint(2, 7),
-        })
-
-    # SKU yang dilindungi dapat prioritas alokasi budget paling awal,
-    # sisanya diurutkan seperti biasa (risiko x LMAR, makin tinggi makin prioritas).
-    protected_candidates = [c for c in candidates if c["sku_id"] in protected_set]
-    other_candidates = [c for c in candidates if c["sku_id"] not in protected_set]
-    other_candidates.sort(key=lambda c: c["stockout_risk_before"] * c["lmar_before"], reverse=True)
-    candidates = protected_candidates + other_candidates
-
-    recommendations = []
-    running_cost = 0.0
-    for rank, c in enumerate(candidates, start=1):
-        qty = max(0, c["q50"] - c["effective_inventory"])
-        cost = qty * c["unit_cost"]
-
-        if running_cost + cost > budget_rp:
-            qty = max(0, int((budget_rp - running_cost) / c["unit_cost"])) if c["unit_cost"] > 0 else 0
-            cost = qty * c["unit_cost"]
-        running_cost += cost
-
-        risk_reduction = 0.65 if qty > 0 else 0.0
-        stockout_risk_after = round(c["stockout_risk_before"] * (1 - risk_reduction), 2)
-        lmar_after = round(c["lmar_before"] * (1 - risk_reduction), -3)
-        wcar_after = round(c["wcar_before"] + cost * 0.4, -3)
-
-        confidence = "tinggi" if c["supplier_on_time_probability"] > 0.85 else (
-            "sedang" if c["supplier_on_time_probability"] > 0.7 else "rendah")
-
-        reason_codes = []
-        if c["stockout_risk_before"] > 0.3:
-            reason_codes.append("risiko_stockout_tinggi")
-        reason_codes.append("supplier_andal" if c["supplier_on_time_probability"] > 0.85 else "supplier_kurang_andal")
-        if c["sku_id"] in protected_set:
-            reason_codes.append("sku_dilindungi")
-
-        start = date.fromisoformat(decision_date)
-        daily_series = [
-            {
-                "date": (start + timedelta(days=i + 1)).isoformat(),
-                "q10": round(c["q10"] / horizon_days, 1),
-                "q50": round(c["q50"] / horizon_days, 1),
-                "q90": round(c["q90"] / horizon_days, 1),
-            }
-            for i in range(min(horizon_days, 7))
-        ]
-
-        nov = (c["lmar_before"] - lmar_after) - (wcar_after - c["wcar_before"]) * 0.1
-
-        item_warnings = [] if confidence != "rendah" else ["Data historis SKU ini terbatas"]
-
-        recommendations.append({
-            "sku_id": c["sku_id"], "priority_rank": rank, "recommended_qty": qty,
-            "required_cash_rp": cost,
-            "inventory_on_hand": c["inventory_on_hand"],
-            "inventory_on_order": c["inventory_on_order"],
-            "effective_inventory": c["effective_inventory"],
-            "forecast_q10": c["q10"], "forecast_q50": c["q50"], "forecast_q90": c["q90"],
-            "forecast_daily_series": daily_series,
-            "stockout_risk_before": c["stockout_risk_before"],
-            "stockout_risk_after": stockout_risk_after,
-            "lmar_before_rp": c["lmar_before"], "lmar_after_rp": lmar_after,
-            "incremental_lmar_avoided_rp": c["lmar_before"] - lmar_after,
-            "wcar_before_rp": c["wcar_before"], "wcar_after_rp": wcar_after,
-            "incremental_wcar_added_rp": wcar_after - c["wcar_before"],
-            "supplier_on_time_probability": c["supplier_on_time_probability"],
-            "supplier_p90_lead_time_days": c["supplier_p90_lead_time_days"],
-            "expected_nov_contribution_rp": nov,
-            "confidence": confidence, "reason_codes": reason_codes,
-            "warnings": item_warnings,
-            "status": "belum_diputuskan",
-        })
-
-    total_lmar = sum(r["incremental_lmar_avoided_rp"] for r in recommendations)
-    total_wcar = sum(r["incremental_wcar_added_rp"] for r in recommendations)
-    total_nov = sum(r["expected_nov_contribution_rp"] for r in recommendations)
-    fill_rate = round(sum(1 for r in recommendations if r["recommended_qty"] > 0) / max(len(recommendations), 1), 2)
-
-    plan_warnings = []
-    if min_fill_rate is not None and fill_rate < min_fill_rate:
-        plan_warnings.append(
-            f"Fill rate hasil optimisasi ({round(fill_rate * 100)}%) belum mencapai target "
-            f"minimum ({round(min_fill_rate * 100)}%). Pertimbangkan menambah modal restock."
+def _validate_inputs(
+    snapshot: RetailSnapshot,
+    artifacts: ModelArtifacts,
+    constraints: MLDecisionConstraints,
+) -> None:
+    snapshot_horizon = (snapshot.horizon_end_date - snapshot.decision_date).days
+    if snapshot_horizon != constraints.horizon_days:
+        raise ValueError(
+            "Horizon snapshot tidak cocok dengan decision constraints: "
+            f"snapshot={snapshot_horizon}, constraints={constraints.horizon_days}"
         )
 
+    if constraints.horizon_days not in artifacts.forecasts:
+        raise PlannerCompatibilityError(
+            f"Artifact tidak mendukung horizon {constraints.horizon_days}; "
+            f"supported={sorted(artifacts.forecasts)}"
+        )
+
+    training_cutoff = date.fromisoformat(artifacts.training_cutoff)
+    if training_cutoff >= snapshot.decision_date:
+        raise PlannerCompatibilityError(
+            "Artifact demand harus dilatih sebelum decision_date untuk replay causal. "
+            f"training_cutoff={training_cutoff.isoformat()}, "
+            f"decision_date={snapshot.decision_date.isoformat()}"
+        )
+
+    if constraints.min_fill_rate is not None:
+        raise ValueError(
+            "min_fill_rate belum didukung sebagai exact optimizer constraint. "
+            "Jangan kirim constraint ini sampai service-level control diaktifkan."
+        )
+
+
+def _combine_confidence(demand_confidence: str, supplier_confidence: str) -> str:
+    levels = {"rendah": 0, "sedang": 1, "tinggi": 2}
+    if demand_confidence not in levels or supplier_confidence not in levels:
+        raise ValueError("Confidence level tidak dikenal")
+
+    level = min(levels[demand_confidence], levels[supplier_confidence])
+    return {0: "rendah", 1: "sedang", 2: "tinggi"}[level]
+
+
+def _reason_codes(
+    *,
+    stockout_probability: float,
+    supplier_on_time_probability: float,
+    confidence: str,
+) -> list[str]:
+    codes: list[str] = []
+
+    if stockout_probability >= 0.30:
+        codes.append("risiko_stockout_tinggi")
+
+    if supplier_on_time_probability >= 0.85:
+        codes.append("supplier_andal")
+    else:
+        codes.append("supplier_kurang_andal")
+
+    if confidence == "rendah":
+        codes.append("data_historis_kurang")
+
+    if not set(codes).issubset(VALID_REASON_CODES):
+        raise AssertionError("Planner menghasilkan reason code di luar contract")
+    return codes
+
+
+def _data_quality(recommendations: list[dict]) -> str:
+    confidences = [item["confidence"] for item in recommendations]
+    if any(value == "rendah" for value in confidences):
+        return "terbatas"
+    if any(value == "sedang" for value in confidences):
+        return "cukup"
+    return "baik"
+
+
+def _estimated_fill_rate(recommendations: list[dict]) -> float:
+    if not recommendations:
+        return 1.0
+
+    weights = [max(0.0, float(item["forecast_q50"])) for item in recommendations]
+    total_weight = sum(weights)
+    if total_weight <= 1e-12:
+        return float(
+            sum(float(item["_expected_fill_rate_after"]) for item in recommendations)
+            / len(recommendations)
+        )
+
+    return float(
+        sum(
+            float(item["_expected_fill_rate_after"]) * weight
+            for item, weight in zip(recommendations, weights, strict=True)
+        )
+        / total_weight
+    )
+
+
+def _build_recommendations(
+    *,
+    snapshot: RetailSnapshot,
+    demand: DemandForecastResult,
+    suppliers: SupplierRiskResult,
+    risk: RiskEngineResult,
+    optimization: OptimizationResult,
+) -> list[dict]:
+    demand_by_sku = {item.sku_id: item for item in demand.forecasts}
+    supplier_by_id = suppliers.supplier_by_id()
+    profile_by_sku = risk.profile_by_sku()
+    allocation_by_sku = optimization.allocation_by_sku()
+
+    rows: list[dict] = []
+    for product in snapshot.products:
+        sku_id = product.sku_id
+        demand_item = demand_by_sku[sku_id]
+        profile = profile_by_sku[sku_id]
+        allocation = allocation_by_sku[sku_id]
+        option = allocation.option
+        supplier = supplier_by_id[product.supplier_id]
+
+        confidence = _combine_confidence(
+            demand_item.confidence,
+            supplier.confidence,
+        )
+        warnings = tuple(
+            dict.fromkeys(
+                [
+                    *demand_item.warnings,
+                    *supplier.warnings,
+                    *profile.warnings,
+                ]
+            )
+        )
+        # NOV at the product boundary is the exact policy-adjusted Rupiah
+        # utility used by the optimizer. Keeping one definition prevents the UI
+        # from showing a "NOV" number that disagrees with the allocation objective.
+        expected_nov = float(allocation.objective_increment_rp)
+
+        rows.append(
+            {
+                "sku_id": sku_id,
+                "recommended_qty": int(allocation.quantity),
+                "required_cash_rp": float(allocation.cash_required_rp),
+                "inventory_on_hand": float(profile.inventory_on_hand),
+                "inventory_on_order": float(profile.inventory_on_order),
+                "effective_inventory": float(profile.effective_inventory),
+                "forecast_q10": float(profile.forecast_q10),
+                "forecast_q50": float(profile.forecast_q50),
+                "forecast_q90": float(profile.forecast_q90),
+                # The production model is direct cumulative H1/H7/H14. Do not
+                # fabricate a daily path by dividing cumulative quantiles.
+                "forecast_daily_series": [],
+                "stockout_risk_before": float(profile.baseline.stockout_probability),
+                "stockout_risk_after": float(option.stockout_risk_after),
+                "lmar_before_rp": float(profile.baseline.lmar_rp),
+                "lmar_after_rp": float(option.lmar_after_rp),
+                "incremental_lmar_avoided_rp": float(
+                    option.incremental_lmar_avoided_rp
+                ),
+                "wcar_before_rp": float(profile.baseline.wcar_rp),
+                "wcar_after_rp": float(option.wcar_after_rp),
+                "incremental_wcar_added_rp": float(option.incremental_wcar_added_rp),
+                "supplier_on_time_probability": float(supplier.on_time_probability),
+                "supplier_p90_lead_time_days": float(supplier.p90_lead_time_days),
+                "expected_nov_contribution_rp": expected_nov,
+                "confidence": confidence,
+                "reason_codes": _reason_codes(
+                    stockout_probability=profile.baseline.stockout_probability,
+                    supplier_on_time_probability=supplier.on_time_probability,
+                    confidence=confidence,
+                ),
+                "warnings": list(warnings),
+                "status": "belum_diputuskan",
+                "_priority_score": float(allocation.objective_increment_rp),
+                "_expected_fill_rate_after": float(option.expected_fill_rate_after),
+            }
+        )
+
+    rows.sort(
+        key=lambda item: (
+            item["recommended_qty"] <= 0,
+            -item["_priority_score"],
+            -item["stockout_risk_before"],
+            -item["lmar_before_rp"],
+            item["sku_id"],
+        )
+    )
+
+    for rank, item in enumerate(rows, start=1):
+        item["priority_rank"] = rank
+
+    return rows
+
+
+def generate_restock_plan(
+    *,
+    snapshot: RetailSnapshot,
+    constraints: MLDecisionConstraints,
+    artifacts: ModelArtifacts | None = None,
+) -> dict:
+    """Run the production predictive-to-prescriptive decision pipeline."""
+
+    started = perf_counter()
+    loaded_artifacts = artifacts if artifacts is not None else load_model_artifacts()
+    _validate_inputs(snapshot, loaded_artifacts, constraints)
+
+    demand = generate_demand_forecasts(
+        snapshot,
+        loaded_artifacts,
+        horizon_days=constraints.horizon_days,
+    )
+    supplier_risk = estimate_supplier_risk(
+        snapshot,
+        horizon_days=constraints.horizon_days,
+    )
+    risk = build_risk_profiles(
+        snapshot,
+        demand,
+        supplier_risk,
+        horizon_days=constraints.horizon_days,
+    )
+    optimization = optimize_exact_mckp(
+        risk,
+        budget_rp=constraints.budget_rp,
+        policy_preset=constraints.policy_preset,
+        protected_sku_ids=constraints.protected_sku_ids,
+    )
+
+    recommendations = _build_recommendations(
+        snapshot=snapshot,
+        demand=demand,
+        suppliers=supplier_risk,
+        risk=risk,
+        optimization=optimization,
+    )
+    estimated_fill_rate = _estimated_fill_rate(recommendations)
+
+    total_lmar_avoided = float(
+        sum(item["incremental_lmar_avoided_rp"] for item in recommendations)
+    )
+    total_wcar_added = float(
+        sum(max(0.0, item["incremental_wcar_added_rp"]) for item in recommendations)
+    )
+    total_nov = float(
+        sum(item["expected_nov_contribution_rp"] for item in recommendations)
+    )
+
+    top_warnings: list[str] = [
+        *snapshot.warnings,
+        *demand.warnings,
+        *supplier_risk.warnings,
+        *risk.warnings,
+    ]
+    if loaded_artifacts.training_dataset_id != snapshot.dataset_id:
+        top_warnings.append(
+            "Demand artifact dilatih pada dataset "
+            f"{loaded_artifacts.training_dataset_id}; inference dataset saat ini "
+            f"adalah {snapshot.dataset_id}."
+        )
+    low_confidence_count = sum(
+        item["confidence"] == "rendah" for item in recommendations
+    )
+    if low_confidence_count:
+        top_warnings.append(
+            f"{low_confidence_count} SKU memiliki confidence rendah."
+        )
+
+    if abs(total_nov - float(optimization.objective_increment_rp)) > 1e-6:
+        raise AssertionError("NOV summary harus sama dengan objective exact optimizer")
+
+    for item in recommendations:
+        item.pop("_priority_score", None)
+        item.pop("_expected_fill_rate_after", None)
+
+    runtime_ms = max(0, int(round((perf_counter() - started) * 1000)))
     return {
         "run_id": f"run_{uuid.uuid4().hex[:12]}",
-        "model_version": "mock-v0.1", "data_hash": "dummy-hash",
-        "budget_allocated_rp": running_cost,
+        "model_version": (
+            f"{DECISION_ENGINE_VERSION}+{loaded_artifacts.version}"
+        ),
+        "data_hash": snapshot.data_hash(),
+        "budget_allocated_rp": float(optimization.cash_used_rp),
         "expected_nov_contribution_rp": total_nov,
-        "estimated_lmar_avoided_rp": total_lmar,
-        "estimated_wcar_added_rp": total_wcar,
-        "estimated_fill_rate": fill_rate,
-        "data_quality": "baik (data simulasi)", "warnings": plan_warnings,
-        "runtime_ms": rng.randint(300, 900),
+        "estimated_lmar_avoided_rp": total_lmar_avoided,
+        "estimated_wcar_added_rp": total_wcar_added,
+        "estimated_fill_rate": estimated_fill_rate,
+        "data_quality": _data_quality(recommendations),
+        "warnings": list(dict.fromkeys(top_warnings)),
+        "runtime_ms": runtime_ms,
         "recommendations": recommendations,
     }
