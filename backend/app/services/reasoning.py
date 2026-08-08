@@ -1,8 +1,8 @@
-"""
-Generator teks penjelasan (reasoning) berbasis rule, BUKAN model AI/NLP.
-Backend menerjemahkan angka mentah (reason_codes, metrik risiko) dari modul ML
-jadi kalimat yang bisa dibaca pemilik toko. Ini tanggung jawab backend,
-bukan Della — lihat PRD bagian 8.
+"""Deterministic merchant-facing explanation templates.
+
+The ML layer owns numbers and reason codes. This service only translates the
+validated analytical output into readable Indonesian; it does not invent new
+risk metrics or model decisions.
 """
 import hashlib
 
@@ -12,46 +12,65 @@ def _pick(options: list[str], seed: str) -> str:
     return options[idx]
 
 
-SHORT_TEMPLATES = {
-    frozenset(["risiko_stockout_tinggi", "supplier_andal"]):
-        "Risiko kehabisan stok tinggi. Supplier cukup bisa diandalkan.",
-    frozenset(["risiko_stockout_tinggi", "supplier_kurang_andal"]):
-        "Risiko kehabisan stok tinggi, tapi supplier sering telat — sebaiknya pesan lebih awal.",
-    frozenset(["data_historis_kurang"]):
-        "Data histori penjualan masih terbatas, sistem memakai perkiraan kategori.",
-}
-
-
 def generate_reasoning(rec: dict) -> dict:
-    codes = frozenset(rec.get("reason_codes", []))
-    qty = rec["recommended_qty"]
-    effective = rec["effective_inventory"]
-    q90 = rec["forecast_q90"]
-    lead = rec["supplier_p90_lead_time_days"]
+    codes = set(rec.get("reason_codes", []))
+    qty = int(rec["recommended_qty"])
+    effective = float(rec["effective_inventory"])
+    q50 = float(rec["forecast_q50"])
+    q90 = float(rec["forecast_q90"])
+    lead = float(rec["supplier_p90_lead_time_days"])
     sku_id = rec["sku_id"]
 
-    reasoning_short = SHORT_TEMPLATES.get(codes)
-    if not reasoning_short:
-        if "risiko_stockout_tinggi" in codes:
-            reasoning_short = "Risiko kehabisan stok cukup tinggi, prioritaskan restock."
-        elif "data_historis_kurang" in codes:
-            reasoning_short = "Data histori penjualan masih terbatas untuk SKU ini."
-        else:
-            reasoning_short = "Permintaan cukup stabil, restock dalam jumlah wajar."
+    if "data_historis_kurang" in codes:
+        reasoning_short = (
+            "Data histori masih terbatas; rekomendasi memakai estimasi yang "
+            "lebih konservatif."
+        )
+    elif "risiko_stockout_tinggi" in codes and "supplier_andal" in codes:
+        reasoning_short = (
+            "Risiko kehabisan stok tinggi dan supplier relatif dapat diandalkan."
+        )
+    elif "risiko_stockout_tinggi" in codes:
+        reasoning_short = (
+            "Risiko kehabisan stok tinggi, sementara ketepatan supplier terbatas."
+        )
+    elif "supplier_kurang_andal" in codes:
+        reasoning_short = (
+            "Stok masih relatif aman, tetapi ketidakpastian supplier tetap diperhitungkan."
+        )
+    else:
+        reasoning_short = "Posisi stok dan risiko saat ini relatif terkendali."
 
-    more_options = [
-        f"Dengan posisi stok efektif {effective} unit dan perkiraan permintaan sampai {q90} unit, "
-        f"{qty} unit ini menutup kebutuhan sekaligus menyisakan sedikit cadangan untuk waktu "
-        f"pengiriman sekitar {lead} hari.",
-        f"Angka {qty} unit dipilih supaya total stok mendekati batas atas perkiraan permintaan "
-        f"({q90} unit), tanpa menyisakan kelebihan yang menahan modal terlalu lama.",
-    ]
-    not_more_options = [
-        "Menambah lebih banyak lagi hanya sedikit menurunkan risiko kehabisan, sementara modal "
-        "yang tertahan naik lebih cepat daripada manfaatnya.",
-        "Di atas jumlah ini, tambahan margin yang terselamatkan tidak sebanding dengan modal "
-        "kerja tambahan yang ikut tertahan.",
-    ]
+    if qty <= 0:
+        more_options = [
+            f"Stok efektif sekitar {effective:.1f} unit sudah memadai terhadap "
+            f"perkiraan permintaan median {q50:.1f} unit, sehingga optimizer tidak "
+            "mengalokasikan pembelian tambahan pada budget ini.",
+            f"Dengan stok efektif {effective:.1f} unit dan rentang permintaan hingga "
+            f"Q90 {q90:.1f} unit, tambahan order belum memberi manfaat bersih yang "
+            "cukup dibanding risiko modal tertahan.",
+        ]
+        not_more_options = [
+            "Tambahan pembelian saat ini menaikkan risiko modal kerja lebih cepat "
+            "daripada margin yang diperkirakan dapat diselamatkan.",
+            "Budget lebih bernilai bila dialokasikan ke SKU lain dengan penurunan "
+            "risiko yang lebih besar per Rupiah.",
+        ]
+    else:
+        more_options = [
+            f"Optimizer memilih {qty} unit setelah memperhitungkan stok efektif "
+            f"{effective:.1f} unit, permintaan Q50 {q50:.1f} hingga Q90 {q90:.1f}, "
+            f"dan P90 lead time supplier {lead:.1f} hari.",
+            f"Jumlah {qty} unit adalah titik trade-off terpilih antara margin yang "
+            "berisiko hilang dan modal kerja tambahan, setelah ketidakpastian "
+            f"kedatangan supplier sekitar {lead:.1f} hari diperhitungkan.",
+        ]
+        not_more_options = [
+            "Di atas jumlah ini, tambahan penurunan LMAR tidak lagi sebanding "
+            "dengan kenaikan WCAR pada policy yang dipilih.",
+            "Quantity yang lebih besar kalah pada objective budget karena manfaat "
+            "marginalnya lebih kecil dibanding tambahan modal yang harus dialokasikan.",
+        ]
 
     return {
         "reasoning_short": reasoning_short,
