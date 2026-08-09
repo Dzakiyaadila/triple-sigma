@@ -57,3 +57,12 @@ class DatasetUploadResponse(BaseModel):
     calendar_max_date: date | None = None
     is_ready: bool
     issues: list[UploadIssue] = Field(default_factory=list)
+
+
+class SkuOption(BaseModel):
+    sku_id: str
+    product_name: str
+    category: str
+
+    class Config:
+        from_attributes = True

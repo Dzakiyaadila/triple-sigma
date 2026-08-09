@@ -14,7 +14,7 @@ frontend/.env
 frontend/playwright-report/
 frontend/test-results/
 .DS_Store
-# Generated RestockIQ ML artifacts
+.env
 backend/artifacts/*
 !backend/artifacts/.gitkeep
 !backend/artifacts/restockiq-demand-v1/
