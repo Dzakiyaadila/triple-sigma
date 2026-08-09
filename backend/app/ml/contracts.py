@@ -24,7 +24,7 @@ class StrictFrozenModel(BaseModel):
 
 
 class MLDecisionConstraints(StrictFrozenModel):
-    budget_rp: float = Field(gt=0)
+    budget_rp: float = Field(ge=0)
     horizon_days: int = Field(default=7, ge=1, le=30)
     policy_preset: PolicyPreset = "seimbang"
     min_fill_rate: float | None = Field(default=None, ge=0, le=1)
@@ -98,7 +98,7 @@ class CalendarRow(StrictFrozenModel):
     calendar_date: date
     is_weekend: bool
     is_holiday: bool
-    is_payday: bool
+    is_payday_week: bool
 
 
 class RetailSnapshot(StrictFrozenModel):

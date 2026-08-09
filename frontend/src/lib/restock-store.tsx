@@ -12,12 +12,14 @@ import { type ItemStatus, type PlanItem, type PolicyStyle, type RunRow } from ".
 import {
   confirmDecisionRun,
   createDecisionRun,
+  getDecisionHistory,
   getDatasetProducts,
   getDatasetStores,
   getDemoDatasetReadiness,
   updateRecommendation as apiUpdateRecommendation,
   uploadDataset,
   type ApiRecommendation,
+  type DecisionHistoryRowResponse,
   type ProductOption,
   type RecommendationStatus,
   type RestockPlanResponse,
@@ -118,6 +120,8 @@ interface Ctx {
   setOpenSku: (v: string | null) => void;
 
   runs: RunRow[];
+  historyLoading: boolean;
+  historyError: string | null;
   confirmOrder: () => Promise<RunRow>;
   confirmPending: boolean;
   confirmError: string | null;
@@ -216,6 +220,20 @@ function toPlanMeta(response: RestockPlanResponse): PlanMeta {
   };
 }
 
+function toRunRow(response: DecisionHistoryRowResponse): RunRow {
+  return {
+    id: response.id,
+    date: response.date,
+    storeId: response.store_id,
+    storeName: response.store_name,
+    budget: response.budget,
+    approvedCount: response.approved_count,
+    total: response.total,
+    status: response.status,
+    items: response.items,
+  };
+}
+
 const RestockCtx = createContext<Ctx | null>(null);
 
 export function RestockProvider({ children }: { children: ReactNode }) {
@@ -253,9 +271,29 @@ export function RestockProvider({ children }: { children: ReactNode }) {
   const decisionInFlight = useRef(new Set<string>());
   const [openSku, setOpenSku] = useState<string | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const confirmInFlight = useRef(false);
+
+  const refreshHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await getDecisionHistory();
+      setRuns(response.map(toRunRow));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Riwayat keputusan gagal dimuat.";
+      setHistoryError(message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
 
   const clearTimers = useCallback(() => {
     timers.current.forEach((timer) => window.clearTimeout(timer));
@@ -702,7 +740,8 @@ export function RestockProvider({ children }: { children: ReactNode }) {
         })),
       };
 
-      setRuns((current) => [run, ...current]);
+      setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+      void refreshHistory();
       return run;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Konfirmasi pesanan gagal.";
@@ -712,7 +751,7 @@ export function RestockProvider({ children }: { children: ReactNode }) {
       confirmInFlight.current = false;
       setConfirmPending(false);
     }
-  }, [availableStores, cart, hasPendingMutations, runId, setup]);
+  }, [availableStores, cart, hasPendingMutations, refreshHistory, runId, setup]);
 
   const value: Ctx = {
     technical,
@@ -746,6 +785,8 @@ export function RestockProvider({ children }: { children: ReactNode }) {
     openSku,
     setOpenSku,
     runs,
+    historyLoading,
+    historyError,
     confirmOrder,
     confirmPending,
     confirmError,

@@ -8,6 +8,13 @@ from app.ml.contracts import PolicyPreset
 from app.ml.risk_engine import RiskEngineResult, SKURiskProfile, SKUQuantityOption
 
 
+OPTIMIZER_ALGORITHM = "exact_sparse_mckp_dynamic_programming"
+OPTIMIZER_CANDIDATE_SCOPE = (
+    "exactly one selected option per SKU from generated quantity candidates; "
+    "q=0 is available unless a protected-SKU floor applies"
+)
+
+
 @dataclass(frozen=True)
 class PolicyWeights:
     lmar_avoided: float

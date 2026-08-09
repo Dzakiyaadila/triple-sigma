@@ -84,7 +84,7 @@ def _inputs():
                 calendar_date=start + timedelta(days=index),
                 is_weekend=False,
                 is_holiday=False,
-                is_payday=False,
+                is_payday_week=False,
             )
             for index in range((decision + timedelta(days=7) - start).days + 1)
         ),

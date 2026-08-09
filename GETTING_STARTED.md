@@ -21,6 +21,7 @@ Create the database, set `DATABASE_URL` in `backend/.env`, then bootstrap:
 ```bash
 python -m app.db.seed
 python -m app.ml.verify_release_artifacts
+python -m app.ml.verify_rc_contract
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
@@ -50,11 +51,15 @@ The default development API URL is `http://localhost:8000/api/v2`.
 ```bash
 cd backend
 python -m pytest tests/ -q
+python -m app.ml.verify_release_artifacts
+python -m app.ml.verify_rc_contract
 python -c "from app.main import app; print('FastAPI import OK')"
 
 cd ../frontend
+npm run lint
 npx tsc --noEmit
 npm run build
+npm run test:e2e:list
 ```
 
 ## Local end-to-end smoke
@@ -71,4 +76,19 @@ For another environment:
 RESTOCKIQ_BASE_URL=https://restock.example.com python scripts/release_smoke.py
 ```
 
-The smoke test verifies readiness, demo dataset counts, a real 31-SKU plan, one authoritative approval, confirmation, and CSV export.
+The smoke test verifies readiness, demo dataset counts, a real zero-budget
+plan, a standard 31-SKU plan, persisted plan retrieval, one authoritative
+approval, idempotent confirmation, post-confirm immutability, durable history,
+and CSV export.
+
+Install Chromium and run the actual browser acceptance scenarios against the
+full stack separately:
+
+```bash
+cd frontend
+npx playwright install chromium
+PLAYWRIGHT_BASE_URL=http://localhost npm run test:e2e
+```
+
+For release certification and public HTTPS evidence, follow
+[`docs/RELEASE_RUNBOOK.md`](docs/RELEASE_RUNBOOK.md).

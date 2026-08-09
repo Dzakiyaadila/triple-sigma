@@ -4,9 +4,18 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.ml.artifact_store import ArtifactError
 from app.ml.optimizer import OptimizationInfeasibleError
-from app.schemas.decision_run import DecisionRunRequest, RestockPlan
-from app.services.decision_run_service import run_decision
-from app.services.plan_cache import plans_cache
+from app.schemas.decision_run import (
+    DecisionHistoryRow,
+    DecisionRunRequest,
+    RestockPlan,
+)
+from app.services.decision_run_service import (
+    DecisionRunNotFoundError,
+    PersistedPlanError,
+    get_persisted_plan,
+    list_confirmed_runs,
+    run_decision,
+)
 
 router = APIRouter(prefix="/decision-runs", tags=["decision-runs"])
 
@@ -35,13 +44,19 @@ def create_decision_run(payload: DecisionRunRequest, db: Session = Depends(get_d
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    plans_cache[plan["run_id"]] = plan
     return plan
+
+
+@router.get("/history", response_model=list[DecisionHistoryRow])
+def get_decision_history(db: Session = Depends(get_db)):
+    return list_confirmed_runs(db)
 
 
 @router.get("/{run_id}/plan", response_model=RestockPlan)
-def get_plan(run_id: str):
-    plan = plans_cache.get(run_id)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Run tidak ditemukan")
-    return plan
+def get_plan(run_id: str, db: Session = Depends(get_db)):
+    try:
+        return get_persisted_plan(db, run_id)
+    except DecisionRunNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PersistedPlanError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

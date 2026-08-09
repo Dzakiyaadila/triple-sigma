@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "demand_artifact": {
+    "version": "restockiq-demand-v1-a067286b7c1e",
+    "training_dataset_id": "demo-retail-v1",
+    "training_cutoff": "2024-05-31",
+    "training_data_hash": "a067286b7c1e966de43f3db9e1d24a7f8a440d236d94c24365c6d717ca44399c",
+    "horizons": [
+      1,
+      7,
+      14
+    ],
+    "quantiles": [
+      0.1,
+      0.5,
+      0.9
+    ]
+  },
+  "inference_contract": {
+    "calendar_payday_feature": "is_payday_week",
+    "zero_budget_supported": true,
+    "oracle_forbidden_fields": [
+      "avg_daily_demand_per_store",
+      "cash_locked_in_stock_rp",
+      "demand_profile",
+      "units_demanded_est"
+    ]
+  },
+  "optimizer": {
+    "algorithm": "exact_sparse_mckp_dynamic_programming",
+    "candidate_scope": "exactly one selected option per SKU from generated quantity candidates; q=0 is available unless a protected-SKU floor applies",
+    "policies": {
+      "lindungi_kas": {
+        "cash_used": 0.08,
+        "lmar_avoided": 0.85,
+        "wcar_added": 1.25
+      },
+      "lindungi_ketersediaan": {
+        "cash_used": 0.0,
+        "lmar_avoided": 1.25,
+        "wcar_added": 0.35
+      },
+      "seimbang": {
+        "cash_used": 0.02,
+        "lmar_avoided": 1.0,
+        "wcar_added": 0.75
+      }
+    }
+  },
+  "backtest_evidence": {
+    "status": "not_available_for_rc",
+    "allowed_metric_claims": []
+  }
+}

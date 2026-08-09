@@ -80,6 +80,24 @@ def test_exact_allocator_respects_budget_and_selects_one_option_per_sku():
         )
 
 
+def test_zero_budget_selects_zero_quantity_for_every_sku():
+    risk = _risk(
+        _profile("A", [(0, 0, 0, 0), (1, 60, 100, 0)]),
+        _profile("B", [(0, 0, 0, 0), (1, 40, 64, 0)]),
+    )
+
+    result = optimize_exact_mckp(
+        risk,
+        budget_rp=0,
+        policy_preset="seimbang",
+    )
+
+    assert result.cash_used_rp == 0
+    assert result.budget_remaining_rp == 0
+    assert result.objective_increment_rp == 0
+    assert all(item.quantity == 0 for item in result.allocations)
+
+
 def test_exact_dp_beats_ratio_greedy_crafted_case():
     risk = _risk(
         _profile("A", [(0, 0, 0, 0), (1, 60, 101.2, 0)]),

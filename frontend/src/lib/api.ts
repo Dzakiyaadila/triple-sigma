@@ -190,6 +190,29 @@ export function confirmDecisionRun(runId: string) {
   });
 }
 
+export interface DecisionHistoryItemResponse {
+  sku_id: string;
+  sku_name: string;
+  qty: number;
+  subtotal: number;
+}
+
+export interface DecisionHistoryRowResponse {
+  id: string;
+  date: string;
+  store_id: string;
+  store_name: string;
+  budget: number;
+  approved_count: number;
+  total: number;
+  status: "Selesai";
+  items: DecisionHistoryItemResponse[];
+}
+
+export function getDecisionHistory() {
+  return request<DecisionHistoryRowResponse[]>("/decision-runs/history");
+}
+
 export function exportCsvUrl(runId: string) {
   return `${API_BASE}/decision-runs/${runId}/export.csv`;
 }

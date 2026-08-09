@@ -1,6 +1,7 @@
-"""
-Cache in-memory sederhana untuk menyimpan hasil plan per run.
-Untuk MVP ini cukup, karena server tidak akan restart di tengah demo.
-Kalau nanti butuh persist lintas restart, tinggal ganti ke query dari DB.
+"""Optional process-local plan cache.
+
+PostgreSQL is the R8 source of truth. Routes rebuild plans from persisted
+DecisionRun and Recommendation rows, so this cache may be empty or stale after
+a restart without affecting correctness.
 """
 plans_cache: dict[str, dict] = {}

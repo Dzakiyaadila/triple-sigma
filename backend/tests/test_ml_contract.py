@@ -1,3 +1,7 @@
+import pytest
+from pydantic import ValidationError
+
+from app.ml.contracts import MLDecisionConstraints
 from app.schemas.decision_run import (
     DecisionConstraints,
     DecisionRunRequest,
@@ -16,6 +20,40 @@ def test_policy_defaults_use_public_api_value():
 
     assert constraints.policy_preset == "seimbang"
     assert request.policy_preset == "seimbang"
+
+
+def test_zero_budget_is_valid_across_public_and_ml_contracts():
+    constraints = DecisionConstraints(budget_rp=0)
+    ml_constraints = MLDecisionConstraints(budget_rp=0)
+    request = DecisionRunRequest(
+        dataset_id="restockiq-demo-v1",
+        store_id="S01",
+        decision_date="2026-07-28",
+        budget_rp=0,
+    )
+
+    assert constraints.budget_rp == 0
+    assert ml_constraints.budget_rp == 0
+    assert request.budget_rp == 0
+
+
+@pytest.mark.parametrize(
+    "contract",
+    (DecisionConstraints, MLDecisionConstraints),
+)
+def test_negative_budget_is_rejected(contract):
+    with pytest.raises(ValidationError):
+        contract(budget_rp=-1)
+
+
+def test_negative_budget_is_rejected_by_request_contract():
+    with pytest.raises(ValidationError):
+        DecisionRunRequest(
+            dataset_id="restockiq-demo-v1",
+            store_id="S01",
+            decision_date="2026-07-28",
+            budget_rp=-1,
+        )
 
 
 def test_inventory_fields_accept_probability_weighted_values():

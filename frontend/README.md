@@ -17,6 +17,7 @@ npm run dev
 ```bash
 npx tsc --noEmit
 npm run build
+npm run test:e2e:list
 ```
 
 The production build uses Nitro's `node-server` preset and starts with:
@@ -32,4 +33,16 @@ node .output/server/index.mjs
 - Evaluation displays only actual plan outputs and provenance.
 - Manual edits use server-returned cash; the UI discloses that the full risk curve is not recomputed.
 - The service-level slider is absent because the exact optimizer does not implement a global minimum-fill-rate constraint.
-- Browser history is session-local until durable history APIs are implemented.
+- Confirmed history is loaded from the backend durability API and survives browser/backend restarts.
+- A failed confirmation never creates a local history row. The page exposes backend history-load errors instead of displaying a false empty state.
+
+## Browser acceptance
+
+With the full stack running:
+
+```bash
+npx playwright install chromium
+PLAYWRIGHT_BASE_URL=http://localhost npm run test:e2e
+```
+
+The RC suite covers zero budget, authoritative approval and q=0 rejection, drawer/evaluation truthfulness, a delayed mutation race, forced confirmation failure without fake history, and setup invalidation. The public RC evidence run uses the deployed HTTPS URL instead of localhost.

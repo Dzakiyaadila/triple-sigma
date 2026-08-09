@@ -72,7 +72,7 @@ def _snapshot(days: int = 120) -> RetailSnapshot:
             calendar_date=start + timedelta(days=index),
             is_weekend=(start + timedelta(days=index)).weekday() >= 5,
             is_holiday=False,
-            is_payday=(start + timedelta(days=index)).day >= 25,
+            is_payday_week=(start + timedelta(days=index)).day >= 25,
         )
         for index in range(days + 15)
     )
@@ -128,6 +128,17 @@ def test_reconstruction_feature_contract_is_oracle_free_and_causal():
     )
     changed_featured = add_reconstruction_features(changed)
     assert float(changed_featured.iloc[-1]["past_stockout_rate_28"]) == original
+
+
+def test_payday_week_feature_preserves_calendar_semantics():
+    frame = snapshot_to_frame(_snapshot(45))
+
+    payday_rows = frame[frame["date"].dt.day >= 25]
+    non_payday_rows = frame[frame["date"].dt.day < 25]
+
+    assert not payday_rows.empty
+    assert payday_rows["is_payday_week"].eq(1.0).all()
+    assert non_payday_rows["is_payday_week"].eq(0.0).all()
 
 
 def test_quantile_crossing_is_repaired():
