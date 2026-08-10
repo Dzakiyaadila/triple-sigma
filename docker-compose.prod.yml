@@ -1,0 +1,7 @@
+services:
+  backend-bootstrap:
+    image: dzakiyaadila/restockiq-backend:latest
+  backend:
+    image: dzakiyaadila/restockiq-backend:latest
+  frontend:
+    image: dzakiyaadila/restockiq-frontend:latest
